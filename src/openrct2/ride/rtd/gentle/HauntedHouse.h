@@ -1,0 +1,64 @@
+/*****************************************************************************
+ * Copyright (c) 2014-2026 OpenRCT2 developers
+ *
+ * For a complete list of all authors, please refer to contributors.md
+ * Interested in contributing? Visit https://github.com/OpenRCT2/OpenRCT2
+ *
+ * OpenRCT2 is licensed under the GNU General Public License version 3.
+ *****************************************************************************/
+
+#pragma once
+
+#include "../../RideData.h"
+#include "../../RideStringIds.h"
+#include "../../ShopItem.h"
+
+// clang-format off
+namespace OpenRCT2
+{
+constexpr RideTypeDescriptor kHauntedHouseRTD =
+{
+    .Category = RideCategory::gentle,
+    .StartTrackPiece = TrackElemType::flatTrack3x3,
+    .TrackPaintFunctions = TrackDrawerDescriptor({
+        .trackStyle = TrackStyle::hauntedHouse,
+        .enabledTrackGroups = {},
+        .extraTrackGroups = {},
+    }),
+    .InvertedTrackPaintFunctions = {},
+    .flags = RtdFlags(RtdFlag::hasSinglePieceStation, RtdFlag::cannotHaveGaps,
+                     RtdFlag::hasLoadOptions, RtdFlag::vehicleIsIntegral, RtdFlag::noWallsAroundTrack,
+                     RtdFlag::isFlatRide, RtdFlag::describeAsInside, RtdFlag::allowMusic,
+                     RtdFlag::hasEntranceAndExit, RtdFlag::singleSession,
+                     RtdFlag::listVehiclesSeparately),
+    .rideModes = { RideMode::hauntedHouse },
+    .DefaultMode = RideMode::hauntedHouse,
+    .Naming = { STR_RIDE_NAME_HAUNTED_HOUSE, STR_RIDE_DESCRIPTION_HAUNTED_HOUSE },
+    .NameConvention = { RideComponentType::building, RideComponentType::structure, RideComponentType::station },
+    .availableBreakdowns = { Breakdown::safetyCutOut },
+    .Heights = { 16, 160, 3, 2, },
+    .MaxMass = 255,
+    .LiftData = { Audio::SoundId::null, 5, 5 },
+    .RatingsMultipliers = { 20, 10, 0 },
+    .UpkeepCosts = { 50, 1, 0, 0, 0, 0 },
+    .BuildCosts = { 42.50_GBP, 1.00_GBP, 1, },
+    .DefaultPrices = { 10, 0 },
+    .DefaultMusic = kMusicObjectHorror,
+    .PhotoItem = ShopItem::photo,
+    .BonusValue = 22,
+    .ColourPresets = kDefaultFlatRideColourPreset,
+    .ColourPreview = { 0, 0 },
+    .ColourKey = RideColourKey::ride,
+    .Name = "haunted_house",
+    .RatingsData =
+    {
+        RatingsCalculationType::flatRide,
+        { RideRating::make(3, 41), RideRating::make(1, 53), RideRating::make(0, 10) },
+        8,
+        7,
+        false,
+        { { RatingsModifierType::noModifier, 0, 0, 0, 0 } }
+    },
+};
+} // namespace OpenRCT2
+// clang-format on

@@ -1,0 +1,801 @@
+/*****************************************************************************
+ * Copyright (c) 2014-2026 OpenRCT2 developers
+ *
+ * For a complete list of all authors, please refer to contributors.md
+ * Interested in contributing? Visit https://github.com/OpenRCT2/OpenRCT2
+ *
+ * OpenRCT2 is licensed under the GNU General Public License version 3.
+ *****************************************************************************/
+
+#include "MapAnimation.h"
+
+#include "../GameState.h"
+#include "../core/Numerics.hpp"
+#include "../drawing/ScrollingText.h"
+#include "../entity/EntityList.h"
+#include "../entity/Peep.h"
+#include "../interface/Viewport.h"
+#include "../object/LargeSceneryEntry.h"
+#include "../object/SmallSceneryEntry.h"
+#include "../object/StationObject.h"
+#include "../object/WallSceneryEntry.h"
+#include "../profiling/Profiling.h"
+#include "../ride/Ride.h"
+#include "../ride/ted/TrackElemType.h"
+#include "Map.h"
+#include "tile_element/EntranceElement.h"
+#include "tile_element/LargeSceneryElement.h"
+#include "tile_element/PathElement.h"
+#include "tile_element/SmallSceneryElement.h"
+#include "tile_element/TileElement.h"
+#include "tile_element/TrackElement.h"
+#include "tile_element/WallElement.h"
+
+#include <set>
+
+using namespace OpenRCT2;
+
+constexpr ZoomLevel kMaxZoom{ 2 };
+constexpr ZoomLevel kMaxScrollingTextZoom{ 0 };
+
+struct TemporaryMapAnimation
+{
+    CoordsXYZ location{};
+    MapAnimations::TemporaryType type{};
+
+    bool operator<(const TemporaryMapAnimation& rhs) const
+    {
+        return std::tie(location.y, location.x, type, location.z)
+            < std::tie(rhs.location.y, rhs.location.x, rhs.type, rhs.location.z);
+    }
+};
+
+enum class UpdateType : uint8_t
+{
+    invalidate,
+    update,
+};
+
+struct TileCoordsXYCmp
+{
+    constexpr bool operator()(const TileCoordsXY& lhs, const TileCoordsXY& rhs) const noexcept
+    {
+        // NOTE: Ordering should match GetFirstElementAt which is x + (y * size)
+        return std::tie(lhs.y, lhs.x) < std::tie(rhs.y, rhs.x);
+    }
+};
+
+static std::vector<bool> _mapAnimationsInvalidate = std::vector<bool>(
+    kMaximumMapSizeTechnical * kMaximumMapSizeTechnical, false);
+static std::set<TileCoordsXY, TileCoordsXYCmp> _mapAnimationsUpdate;
+
+static std::set<TemporaryMapAnimation> _temporaryMapAnimations;
+
+template<bool invalidateAllViewports>
+static void Invalidate(
+    const Viewport* const viewport, const int32_t x, const int32_t y, const int32_t z0, const int32_t z1,
+    const ZoomLevel maxZoom)
+{
+    if constexpr (invalidateAllViewports)
+    {
+        ViewportsInvalidate(x, y, z0, z1, maxZoom);
+    }
+    else
+    {
+        viewport->Invalidate(x, y, z0, z1, maxZoom);
+    }
+}
+
+template<bool invalidate, bool invalidateAllViewports>
+static bool UpdateEntranceAnimation(
+    const EntranceElement& entrance, const CoordsXYZ& loc, const int32_t baseZ, const Viewport* const viewport)
+{
+    if (entrance.getEntranceType() == EntranceType::rideEntrance)
+    {
+        const auto* const ride = GetRide(entrance.getRideIndex());
+        if (ride != nullptr)
+        {
+            const auto* const stationObj = ride->getStationObject();
+            if (stationObj != nullptr)
+            {
+                if constexpr (invalidate)
+                {
+                    Invalidate<invalidateAllViewports>(
+                        viewport, loc.x, loc.y, baseZ + stationObj->Height + 8, baseZ + stationObj->Height + 24,
+                        kMaxScrollingTextZoom);
+                }
+                return true;
+            }
+        }
+    }
+    else if (
+        entrance.getEntranceType() == EntranceType::parkEntrance && entrance.getSequenceIndex() == ParkEntranceSequence::centre)
+    {
+        if constexpr (invalidate)
+        {
+            const int32_t direction = (entrance.getDirection() + GetCurrentRotation()) & 3;
+            if (direction == TILE_ELEMENT_DIRECTION_SOUTH || direction == TILE_ELEMENT_DIRECTION_WEST)
+            {
+                Invalidate<invalidateAllViewports>(viewport, loc.x, loc.y, baseZ + 32, baseZ + 64, kMaxScrollingTextZoom);
+            }
+        }
+        return true;
+    }
+
+    return false;
+}
+
+template<bool invalidate, bool invalidateAllViewports>
+static bool UpdatePathAnimation(
+    const PathElement& path, const CoordsXYZ& loc, const int32_t baseZ, const Viewport* const viewport)
+{
+    if (path.isQueue() && path.hasQueueBanner())
+    {
+        if constexpr (invalidate)
+        {
+            const int32_t direction = (path.getQueueBannerDirection() + GetCurrentRotation()) & 3;
+            if (direction == TILE_ELEMENT_DIRECTION_NORTH || direction == TILE_ELEMENT_DIRECTION_EAST)
+            {
+                Invalidate<invalidateAllViewports>(viewport, loc.x, loc.y, baseZ + 16, baseZ + 30, kMaxScrollingTextZoom);
+            }
+        }
+        return true;
+    }
+    return false;
+}
+
+template<bool invalidate, bool invalidateAllViewports>
+static std::optional<UpdateType> UpdateSmallSceneryAnimation(
+    const SmallSceneryElement& scenery, const CoordsXYZ& loc, const int32_t baseZ, const Viewport* const viewport)
+{
+    const auto* const entry = scenery.getEntry();
+    if (entry == nullptr)
+    {
+        return std::nullopt;
+    }
+
+    if (entry->flags.hasAny(
+            SmallSceneryFlag::isFountain, SmallSceneryFlag::isCupidFountain, SmallSceneryFlag::isSwampGoo,
+            SmallSceneryFlag::hasFrameOffsets, SmallSceneryFlag::isClock))
+    {
+        auto animationType = UpdateType::invalidate;
+        if (entry->flags.has(SmallSceneryFlag::isClock))
+        {
+            animationType = UpdateType::update;
+
+            // Don't apply anything to peeps when the scenery is a ghost.
+            if (!scenery.isGhost() && !(getGameState().currentTicks & 0x3FF))
+            {
+                const int32_t direction = scenery.getDirection();
+                auto quad = EntityTileList<Peep>(CoordsXY{ loc.x, loc.y } - CoordsDirectionDelta[direction]);
+                for (auto peep : quad)
+                {
+                    if (peep->state != PeepState::walking || peep->z != baseZ || !peep->isActionInterruptableSafely())
+                        continue;
+                    peep->action = PeepActionType::checkTime;
+                    peep->animationFrameNum = 0;
+                    peep->animationImageIdOffset = 0;
+                    peep->updateCurrentAnimationType();
+                    if constexpr (invalidate)
+                    {
+                        peep->invalidate();
+                    }
+                    break;
+                }
+                if constexpr (invalidate)
+                {
+                    Invalidate<invalidateAllViewports>(viewport, loc.x, loc.y, baseZ, scenery.getClearanceZ(), kMaxZoom);
+                }
+            }
+        }
+        else if constexpr (invalidate)
+        {
+            Invalidate<invalidateAllViewports>(viewport, loc.x, loc.y, baseZ, scenery.getClearanceZ(), kMaxZoom);
+        }
+        return std::optional(animationType);
+    }
+
+    return std::nullopt;
+}
+
+template<bool invalidate, bool invalidateAllViewports>
+static bool UpdateTrackAnimation(TrackElement& track, const CoordsXYZ& loc, const int32_t baseZ, const Viewport* const viewport)
+{
+    switch (track.getTrackType())
+    {
+        case TrackElemType::waterfall:
+            if constexpr (invalidate)
+            {
+                Invalidate<invalidateAllViewports>(viewport, loc.x, loc.y, baseZ + 14, baseZ + 46, kMaxZoom);
+            }
+            return true;
+        case TrackElemType::rapids:
+        case TrackElemType::whirlpool:
+            if constexpr (invalidate)
+            {
+                Invalidate<invalidateAllViewports>(viewport, loc.x, loc.y, baseZ + 14, baseZ + 18, kMaxZoom);
+            }
+            return true;
+        case TrackElemType::spinningTunnel:
+            if constexpr (invalidate)
+            {
+                Invalidate<invalidateAllViewports>(viewport, loc.x, loc.y, baseZ + 14, baseZ + 32, kMaxZoom);
+            }
+            return true;
+        default:
+            break;
+    }
+
+    return false;
+}
+
+template<bool invalidate, bool invalidateAllViewports>
+static bool UpdateLargeSceneryAnimation(
+    const LargeSceneryElement& scenery, const CoordsXYZ& loc, const int32_t baseZ, const Viewport* const viewport)
+{
+    const auto* const entry = scenery.getEntry();
+    if (entry != nullptr && entry->flags.has(LargeSceneryFlag::isAnimated))
+    {
+        if constexpr (invalidate)
+        {
+            Invalidate<invalidateAllViewports>(viewport, loc.x, loc.y, baseZ, baseZ + 16, kMaxZoom);
+        }
+        return true;
+    }
+
+    return false;
+}
+
+template<bool invalidate, bool invalidateAllViewports>
+static std::optional<UpdateType> UpdateWallAnimation(
+    WallElement& wall, const CoordsXYZ& loc, const int32_t baseZ, const Viewport* const viewport)
+{
+    const auto* const entry = wall.getEntry();
+    if (entry == nullptr)
+    {
+        return std::nullopt;
+    }
+
+    if (entry->flags.has(WallSceneryFlag::isDoor) && wall.isAnimating())
+    {
+        if (getGameState().currentTicks & 1)
+        {
+            return std::optional(UpdateType::update);
+        }
+
+        bool removeAnim = true;
+
+        const auto currentFrame = wall.getAnimationFrame();
+        if (currentFrame != 0)
+        {
+            auto newFrame = currentFrame;
+            if (currentFrame == 15)
+            {
+                newFrame = 0;
+                wall.setIsAnimating(false);
+            }
+            else
+            {
+                removeAnim = false;
+                if (currentFrame != 5)
+                {
+                    newFrame++;
+
+                    if (newFrame == 13 && !(entry->flags.has(WallSceneryFlag::hasLongDoorAnimation)))
+                        newFrame = 15;
+                }
+            }
+
+            if (currentFrame != newFrame)
+            {
+                wall.setAnimationFrame(newFrame);
+                if constexpr (invalidate)
+                {
+                    Invalidate<invalidateAllViewports>(viewport, loc.x, loc.y, baseZ, baseZ + 32, kMaxZoom);
+                }
+            }
+        }
+
+        return removeAnim ? std::nullopt : std::optional(UpdateType::update);
+    }
+    else if (entry->flags2.has(WallSceneryFlag2::isAnimated) || entry->scrolling_mode != kScrollingModeNone)
+    {
+        if constexpr (invalidate)
+        {
+            Invalidate<invalidateAllViewports>(viewport, loc.x, loc.y, baseZ, baseZ + 16, kMaxZoom);
+        }
+        return std::optional(UpdateType::invalidate);
+    }
+
+    return std::nullopt;
+}
+
+template<bool invalidate, bool invalidateAllViewports>
+static bool UpdateBannerAnimation(
+    [[maybe_unused]] const BannerElement& banner, const CoordsXYZ& loc, const int32_t baseZ, const Viewport* const viewport)
+{
+    if constexpr (invalidate)
+    {
+        Invalidate<invalidateAllViewports>(viewport, loc.x, loc.y, baseZ, baseZ + 16, kMaxScrollingTextZoom);
+    }
+    return true;
+}
+
+template<bool invalidate, bool invalidateAllViewports>
+static std::optional<UpdateType> UpdateTile(const TileCoordsXY& coords, const Viewport* const viewport)
+{
+    auto* tileElement = MapGetFirstElementAt(coords);
+    if (tileElement == nullptr)
+    {
+        return std::nullopt;
+    }
+
+    bool hasAnimations = false;
+    auto updateType = UpdateType::invalidate;
+    do
+    {
+        const auto baseZ = tileElement->getBaseZ();
+        const CoordsXYZ loc{ coords.toCoordsXY(), baseZ };
+
+        switch (tileElement->getType())
+        {
+            case TileElementType::entrance:
+                hasAnimations |= UpdateEntranceAnimation<invalidate, invalidateAllViewports>(
+                    *tileElement->asEntrance(), loc, baseZ, viewport);
+                break;
+            case TileElementType::path:
+                hasAnimations |= UpdatePathAnimation<invalidate, invalidateAllViewports>(
+                    *tileElement->asPath(), loc, baseZ, viewport);
+                break;
+            case TileElementType::smallScenery:
+            {
+                const auto result = UpdateSmallSceneryAnimation<invalidate, invalidateAllViewports>(
+                    *tileElement->asSmallScenery(), loc, baseZ, viewport);
+                if (result)
+                {
+                    hasAnimations |= true;
+                    if (result.value() == UpdateType::update)
+                    {
+                        updateType = UpdateType::update;
+                    }
+                }
+                break;
+            }
+            case TileElementType::track:
+                hasAnimations |= UpdateTrackAnimation<invalidate, invalidateAllViewports>(
+                    *tileElement->asTrack(), loc, baseZ, viewport);
+                break;
+            case TileElementType::banner:
+                hasAnimations |= UpdateBannerAnimation<invalidate, invalidateAllViewports>(
+                    *tileElement->asBanner(), loc, baseZ, viewport);
+                break;
+            case TileElementType::largeScenery:
+                hasAnimations |= UpdateLargeSceneryAnimation<invalidate, invalidateAllViewports>(
+                    *tileElement->asLargeScenery(), loc, baseZ, viewport);
+                break;
+            case TileElementType::wall:
+            {
+                const auto result = UpdateWallAnimation<invalidate, invalidateAllViewports>(
+                    *tileElement->asWall(), loc, baseZ, viewport);
+                if (result)
+                {
+                    hasAnimations |= true;
+                    if (result.value() == UpdateType::update)
+                    {
+                        updateType = UpdateType::update;
+                    }
+                }
+                break;
+            }
+            default:
+                break;
+        }
+    } while (!(tileElement++)->isLastForTile());
+
+    return hasAnimations ? std::optional(updateType) : std::nullopt;
+}
+
+template<bool invalidate>
+static bool UpdateOnRidePhotoAnimation(TrackElement& track, const CoordsXYZ& coords)
+{
+    if (track.isTakingPhoto())
+    {
+        track.decrementPhotoTimeout();
+        if constexpr (invalidate)
+        {
+            ViewportsInvalidate(coords.x, coords.y, coords.z, track.getClearanceZ(), kMaxZoom);
+        }
+        return true;
+    }
+    return false;
+}
+
+template<bool invalidate>
+static bool UpdateLandEdgeDoorsAnimation(TrackElement& track, const CoordsXYZ& coords)
+{
+    if (getGameState().currentTicks & 3)
+    {
+        return true;
+    }
+
+    bool isAnimating = false;
+
+    const auto doorAState = track.getDoorAState();
+    if (doorAState >= kLandEdgeDoorFrameEnd)
+    {
+        track.setDoorAState(kLandEdgeDoorFrameClosed);
+        if constexpr (invalidate)
+        {
+            ViewportsInvalidate(coords.x, coords.y, coords.z, coords.z + 32, kMaxZoom);
+        }
+    }
+    else if (doorAState != kLandEdgeDoorFrameClosed && doorAState != kLandEdgeDoorFrameOpen)
+    {
+        track.setDoorAState(doorAState + 1);
+        if constexpr (invalidate)
+        {
+            ViewportsInvalidate(coords.x, coords.y, coords.z, coords.z + 32, kMaxZoom);
+        }
+        isAnimating = true;
+    }
+
+    const auto doorBState = track.getDoorBState();
+    if (doorBState >= kLandEdgeDoorFrameEnd)
+    {
+        track.setDoorBState(kLandEdgeDoorFrameClosed);
+        if constexpr (invalidate)
+        {
+            ViewportsInvalidate(coords.x, coords.y, coords.z, coords.z + 32, kMaxZoom);
+        }
+    }
+    else if (doorBState != kLandEdgeDoorFrameClosed && doorBState != kLandEdgeDoorFrameOpen)
+    {
+        track.setDoorBState(doorBState + 1);
+        if constexpr (invalidate)
+        {
+            ViewportsInvalidate(coords.x, coords.y, coords.z, coords.z + 32, kMaxZoom);
+        }
+        isAnimating = true;
+    }
+
+    return isAnimating;
+}
+
+template<bool invalidate>
+static bool UpdateTemporaryAnimation(const TemporaryMapAnimation& animation)
+{
+    const TileCoordsXYZ tileCoords{ animation.location };
+    TileElement* tileElement = MapGetFirstElementAt(tileCoords);
+    if (tileElement == nullptr)
+    {
+        return true;
+    }
+
+    bool isAnimating = false;
+    do
+    {
+        switch (animation.type)
+        {
+            case MapAnimations::TemporaryType::onRidePhoto:
+            {
+                if (tileElement->getType() == TileElementType::track && tileElement->baseHeight == tileCoords.z
+                    && tileElement->asTrack()->getTrackType() == TrackElemType::onRidePhoto)
+                {
+                    isAnimating |= UpdateOnRidePhotoAnimation<invalidate>(*tileElement->asTrack(), animation.location);
+                }
+                break;
+            }
+            case MapAnimations::TemporaryType::landEdgeDoor:
+            {
+                if (tileElement->getType() == TileElementType::track && tileElement->baseHeight == tileCoords.z)
+                {
+                    isAnimating |= UpdateLandEdgeDoorsAnimation<invalidate>(*tileElement->asTrack(), animation.location);
+                }
+            }
+        }
+    } while (!(tileElement++)->isLastForTile());
+
+    return isAnimating;
+}
+
+static std::optional<UpdateType> IsElementAnimated(const TileElementBase& element)
+{
+    switch (element.getType())
+    {
+        case TileElementType::banner:
+            return std::optional(UpdateType::invalidate);
+        case TileElementType::wall:
+        {
+            const auto* const wall = element.asWall();
+            const auto* const entry = wall->getEntry();
+            if (entry != nullptr)
+            {
+                if (entry->flags2.has(WallSceneryFlag2::isAnimated) || entry->scrolling_mode != kScrollingModeNone)
+                {
+                    return std::optional(UpdateType::invalidate);
+                }
+                if (entry->flags.has(WallSceneryFlag::isDoor) && wall->isAnimating())
+                {
+                    return std::optional(UpdateType::update);
+                }
+            }
+            break;
+        }
+        case TileElementType::smallScenery:
+        {
+            const auto* const scenery = element.asSmallScenery();
+            const auto* const entry = scenery->getEntry();
+            if (entry != nullptr && entry->flags.has(SmallSceneryFlag::isAnimated))
+            {
+                if (entry->flags.has(SmallSceneryFlag::isClock))
+                {
+                    return std::optional(UpdateType::update);
+                }
+                else
+                {
+                    return std::optional(UpdateType::invalidate);
+                }
+            }
+            break;
+        }
+        case TileElementType::largeScenery:
+        {
+            const auto* const scenery = element.asLargeScenery();
+            const auto* const entry = scenery->getEntry();
+            if (entry != nullptr && entry->flags.has(LargeSceneryFlag::isAnimated))
+            {
+                return std::optional(UpdateType::invalidate);
+            }
+            break;
+        }
+        case TileElementType::path:
+        {
+            const auto* const path = element.asPath();
+            if (path->hasQueueBanner())
+            {
+                return std::optional(UpdateType::invalidate);
+            }
+            break;
+        }
+        case TileElementType::entrance:
+        {
+            const auto* const entrance = element.asEntrance();
+            if (entrance->getEntranceType() == EntranceType::parkEntrance
+                && entrance->getSequenceIndex() == ParkEntranceSequence::centre)
+            {
+                return std::optional(UpdateType::invalidate);
+            }
+            else if (entrance->getEntranceType() == EntranceType::rideEntrance)
+            {
+                return std::optional(UpdateType::invalidate);
+            }
+            break;
+        }
+        case TileElementType::track:
+        {
+            const auto* const track = element.asTrack();
+            switch (track->getTrackType())
+            {
+                case TrackElemType::waterfall:
+                case TrackElemType::rapids:
+                case TrackElemType::whirlpool:
+                case TrackElemType::spinningTunnel:
+                    return std::optional(UpdateType::invalidate);
+                default:
+                    break;
+            }
+            break;
+        }
+        default:
+            break;
+    }
+
+    return std::nullopt;
+}
+
+void MapAnimations::MarkTileForInvalidation(const TileCoordsXY coords)
+{
+    if (!MapIsEdge(coords.toCoordsXY()) && !_mapAnimationsUpdate.contains(coords))
+    {
+        _mapAnimationsInvalidate[coords.x + (coords.y * kMaximumMapSizeTechnical)] = true;
+    }
+}
+
+void MapAnimations::MarkTileForUpdate(const TileCoordsXY coords)
+{
+    if (!MapIsEdge(coords.toCoordsXY()))
+    {
+        _mapAnimationsInvalidate[coords.x + (coords.y * kMaximumMapSizeTechnical)] = false;
+        _mapAnimationsUpdate.insert(coords);
+    }
+}
+
+void MapAnimations::CreateTemporary(const CoordsXYZ& coords, const TemporaryType type)
+{
+    _temporaryMapAnimations.insert(TemporaryMapAnimation{ coords, type });
+}
+
+void MapAnimations::MarkAllTiles()
+{
+    TileElementIterator it;
+    TileElementIteratorBegin(&it);
+    while (TileElementIteratorNext(&it))
+    {
+        const auto isAnimated = IsElementAnimated(*it.element);
+        if (isAnimated)
+        {
+            switch (*isAnimated)
+            {
+                case UpdateType::invalidate:
+                    MarkTileForInvalidation(TileCoordsXY(it.x, it.y));
+                    break;
+                case UpdateType::update:
+                    MarkTileForUpdate(TileCoordsXY(it.x, it.y));
+                    break;
+            }
+        }
+    }
+}
+
+static void InvalidateAll(const ViewportList& viewports)
+{
+    for (const auto* const viewport : viewports)
+    {
+        if (viewport->zoom > kMaxZoom)
+        {
+            continue;
+        }
+
+        // Code adapted from PaintSessionGenerateRotate.
+        // Ideally this would iterate over tiles in memory order.
+        constexpr int32_t maxTileHeightModifier = 88; // from magic value in PaintSessionGenerateRotate
+        constexpr int32_t maxTileHeight = (kMaxTileElementHeight * kCoordsZStep) + maxTileHeightModifier;
+
+        const auto direction = DirectionFlipXAxis(viewport->rotation);
+        const int32_t numVerticalTiles = (viewport->ViewHeight() + maxTileHeight) / kScreenCoordsTileHeight;
+        const TileCoordsXY nextVerticalTile = TileCoordsXY{ 1, 1 }.rotate(direction);
+        const int32_t screenCoordY = Numerics::floor2(
+            (viewport->viewPos.y - kScreenCoordsTileHeightHalf), kScreenCoordsTileWidthHalf);
+
+        for (int32_t x = viewport->viewPos.x; x < viewport->viewPos.x + viewport->ViewWidth() + kScreenCoordsTileWidth;
+             x += kScreenCoordsTileWidthHalf)
+        {
+            const ScreenCoordsXY screenCoord = { Numerics::floor2(x, kScreenCoordsTileWidthHalf), screenCoordY };
+            CoordsXY mapTile = { screenCoord.y - screenCoord.x / 2, screenCoord.y + screenCoord.x / 2 };
+            mapTile = mapTile.rotate(direction);
+            if (direction & 1)
+            {
+                mapTile.y -= kCoordsXYHalfTile;
+            }
+            mapTile = mapTile.toTileStart();
+            TileCoordsXY tileCoords(mapTile);
+
+            for (int32_t i = 0; i < numVerticalTiles; ++i)
+            {
+                if (!MapIsEdge(tileCoords.toCoordsXY())
+                    && _mapAnimationsInvalidate[tileCoords.x + (tileCoords.y * kMaximumMapSizeTechnical)])
+                {
+                    if (!UpdateTile<true, false>(tileCoords, viewport))
+                    {
+                        _mapAnimationsInvalidate[tileCoords.x + (tileCoords.y * kMaximumMapSizeTechnical)] = false;
+                    }
+                }
+                tileCoords += nextVerticalTile;
+            }
+        }
+    }
+}
+
+static bool IsTileVisible(const ViewportList& viewports, const TileCoordsXY tileCoords)
+{
+    for (const auto* const viewport : viewports)
+    {
+        if (viewport->ContainsTile(tileCoords))
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+static void UpdateAll(const ViewportList& viewports)
+{
+    // Currently nothing updates on odd ticks.
+    if (getGameState().currentTicks & 1)
+        return;
+
+    auto it = _mapAnimationsUpdate.begin();
+    while (it != _mapAnimationsUpdate.end())
+    {
+        const bool isVisible = IsTileVisible(viewports, *it);
+        const auto result = isVisible ? UpdateTile<true, true>(*it, nullptr) : UpdateTile<false, true>(*it, nullptr);
+        if (result)
+        {
+            if (result.value() == UpdateType::invalidate)
+            {
+                const auto& coords = *it;
+                _mapAnimationsInvalidate[coords.x + (coords.y * kMaximumMapSizeTechnical)] = true;
+                it = _mapAnimationsUpdate.erase(it);
+            }
+            else
+            {
+                ++it;
+            }
+        }
+        else
+        {
+            it = _mapAnimationsUpdate.erase(it);
+        }
+    }
+}
+
+static void UpdateAllTemporary(const ViewportList& viewports)
+{
+    auto it = _temporaryMapAnimations.begin();
+    while (it != _temporaryMapAnimations.end())
+    {
+        const auto& animation = *it;
+        const bool isVisible = IsTileVisible(viewports, TileCoordsXY(animation.location));
+        const auto result = isVisible ? UpdateTemporaryAnimation<true>(*it) : UpdateTemporaryAnimation<false>(*it);
+        if (result)
+        {
+            ++it;
+        }
+        else
+        {
+            it = _temporaryMapAnimations.erase(it);
+        }
+    }
+}
+
+void MapAnimations::InvalidateAndUpdateAll()
+{
+    PROFILED_FUNCTION();
+
+    const auto viewports = GetVisibleViewports();
+    InvalidateAll(viewports);
+    UpdateAll(viewports);
+    UpdateAllTemporary(viewports);
+}
+
+void MapAnimations::ClearAll()
+{
+    _mapAnimationsInvalidate.assign(_mapAnimationsInvalidate.size(), false);
+    _mapAnimationsUpdate.clear();
+    _temporaryMapAnimations.clear();
+}
+
+void MapAnimations::ShiftAll(const TileCoordsXY amount)
+{
+    if (amount.x == 0 && amount.y == 0)
+        return;
+
+    std::vector<bool> newMapAnimationsInvalidate(_mapAnimationsInvalidate.size(), false);
+    for (int32_t y = 0; y < kMaximumMapSizeTechnical; y++)
+    {
+        for (int32_t x = 0; x < kMaximumMapSizeTechnical; x++)
+        {
+            const bool animated = _mapAnimationsInvalidate[x + (y * kMaximumMapSizeTechnical)];
+            const TileCoordsXY newCoords = TileCoordsXY(x, y) + amount;
+            if (!MapIsEdge(newCoords.toCoordsXY()))
+            {
+                newMapAnimationsInvalidate[newCoords.x + (newCoords.y * kMaximumMapSizeTechnical)] = animated;
+            }
+        }
+    }
+    _mapAnimationsInvalidate = std::move(newMapAnimationsInvalidate);
+
+    std::set<TileCoordsXY, TileCoordsXYCmp> newMapAnimationsUpdate;
+    for (const auto a : _mapAnimationsUpdate)
+    {
+        newMapAnimationsUpdate.insert(a + amount);
+    }
+    _mapAnimationsUpdate = std::move(newMapAnimationsUpdate);
+
+    std::set<TemporaryMapAnimation> newTemporaryMapAnimations;
+    for (const auto& a : _temporaryMapAnimations)
+    {
+        newTemporaryMapAnimations.insert(TemporaryMapAnimation{ a.location + CoordsXYZ(amount.toCoordsXY(), 0), a.type });
+    }
+    _temporaryMapAnimations = std::move(newTemporaryMapAnimations);
+}

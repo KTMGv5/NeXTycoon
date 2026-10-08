@@ -1,0 +1,227 @@
+/*****************************************************************************
+ * Copyright (c) 2014-2026 OpenRCT2 developers
+ *
+ * For a complete list of all authors, please refer to contributors.md
+ * Interested in contributing? Visit https://github.com/OpenRCT2/OpenRCT2
+ *
+ * OpenRCT2 is licensed under the GNU General Public License version 3.
+ *****************************************************************************/
+
+#include "Entrance.h"
+
+#include "../GameState.h"
+#include "../actions/GameActionRunner.h"
+#include "../actions/park/ParkEntranceRemoveAction.h"
+#include "../actions/ride/RideEntranceExitPlaceAction.h"
+#include "../actions/ride/RideEntranceExitRemoveAction.h"
+#include "../ride/RideConstruction.h"
+#include "Map.h"
+#include "tile_element/EntranceElement.h"
+#include "tile_element/TrackElement.h"
+
+using namespace OpenRCT2;
+using OpenRCT2::GameActions::CommandFlag;
+
+bool gParkEntranceGhostExists = false;
+CoordsXYZD gParkEntranceGhostPosition = { 0, 0, 0, 0 };
+
+CoordsXYZD gRideEntranceExitGhostPosition;
+StationIndex gRideEntranceExitGhostStationIndex;
+
+static money64 RideEntranceExitPlaceGhost(
+    RideId rideIndex, const CoordsXY& entranceExitCoords, Direction direction, EntranceType placeType, StationIndex stationNum)
+{
+    auto rideEntranceExitPlaceAction = GameActions::RideEntranceExitPlaceAction(
+        entranceExitCoords, direction, rideIndex, stationNum, placeType == EntranceType::rideExit);
+    rideEntranceExitPlaceAction.SetFlags({ CommandFlag::allowDuringPaused, CommandFlag::ghost });
+    auto res = GameActions::Execute(&rideEntranceExitPlaceAction, getGameState());
+
+    return res.error == GameActions::Status::ok ? res.cost : kMoney64Undefined;
+}
+
+/**
+ *
+ *  rct2: 0x00666F9E
+ */
+void ParkEntranceRemoveGhost()
+{
+    if (gParkEntranceGhostExists)
+    {
+        gParkEntranceGhostExists = false;
+        auto parkEntranceRemoveAction = GameActions::ParkEntranceRemoveAction(gParkEntranceGhostPosition);
+        parkEntranceRemoveAction.SetFlags({ CommandFlag::ghost, CommandFlag::allowDuringPaused });
+        GameActions::Execute(&parkEntranceRemoveAction, getGameState());
+    }
+}
+
+int32_t ParkEntranceGetIndex(const CoordsXYZ& entrancePos)
+{
+    int32_t i = 0;
+    for (const auto& entrance : getGameState().park.entrances)
+    {
+        if (entrancePos == entrance)
+        {
+            return i;
+        }
+        i++;
+    }
+    return -1;
+}
+
+void ParkEntranceReset()
+{
+    getGameState().park.entrances.clear();
+}
+
+void OpenRCT2::RideEntranceExitPlaceProvisionalGhost()
+{
+    if (_currentTrackSelectionFlags.has(TrackSelectionFlag::entranceOrExit))
+    {
+        RideEntranceExitPlaceGhost(
+            _currentRideIndex, gRideEntranceExitGhostPosition, gRideEntranceExitGhostPosition.direction,
+            gRideEntranceExitPlaceType, gRideEntranceExitGhostStationIndex);
+    }
+}
+
+void OpenRCT2::RideEntranceExitRemoveGhost()
+{
+    if (_currentTrackSelectionFlags.has(TrackSelectionFlag::entranceOrExit))
+    {
+        auto rideEntranceExitRemove = GameActions::RideEntranceExitRemoveAction(
+            gRideEntranceExitGhostPosition, _currentRideIndex, gRideEntranceExitGhostStationIndex,
+            gRideEntranceExitPlaceType == EntranceType::rideExit);
+
+        rideEntranceExitRemove.SetFlags({ CommandFlag::ghost, CommandFlag::allowDuringPaused });
+        GameActions::Execute(&rideEntranceExitRemove, getGameState());
+    }
+}
+
+/**
+ *
+ *  rct2: 0x006CA28C
+ */
+money64 OpenRCT2::RideEntranceExitPlaceGhost(
+    const Ride& ride, const CoordsXY& entranceExitCoords, Direction direction, EntranceType placeType, StationIndex stationNum)
+{
+    RideConstructionRemoveGhosts();
+    money64 result = RideEntranceExitPlaceGhost(ride.id, entranceExitCoords, direction, placeType, stationNum);
+
+    if (result != kMoney64Undefined)
+    {
+        _currentTrackSelectionFlags.set(TrackSelectionFlag::entranceOrExit);
+        gRideEntranceExitGhostPosition.x = entranceExitCoords.x;
+        gRideEntranceExitGhostPosition.y = entranceExitCoords.y;
+        gRideEntranceExitGhostPosition.direction = direction;
+        gRideEntranceExitGhostStationIndex = stationNum;
+    }
+    return result;
+}
+
+/**
+ * Replaces the outer hedge walls for an entrance placement removal.
+ *  rct2: 0x00666D6F
+ */
+void MazeEntranceHedgeReplacement(const CoordsXYE& entrance)
+{
+    int32_t direction = entrance.element->getDirection();
+    auto hedgePos = entrance + CoordsDirectionDelta[direction];
+    int32_t z = entrance.element->getBaseZ();
+    RideId rideIndex = entrance.element->asEntrance()->getRideIndex();
+
+    auto tileElement = MapGetFirstElementAt(hedgePos);
+    if (tileElement == nullptr)
+        return;
+    do
+    {
+        if (tileElement->getType() != TileElementType::track)
+            continue;
+        if (tileElement->asTrack()->getRideIndex() != rideIndex)
+            continue;
+        if (tileElement->getBaseZ() != z)
+            continue;
+        if (tileElement->asTrack()->getTrackType() != TrackElemType::maze)
+            continue;
+
+        // Each maze element is split into 4 sections with 4 different walls
+        uint8_t mazeSection = direction * 4;
+        // Add the top outer wall
+        tileElement->asTrack()->mazeEntryAdd(1 << ((mazeSection + 9) & 0x0F));
+        // Add the bottom outer wall
+        tileElement->asTrack()->mazeEntryAdd(1 << ((mazeSection + 12) & 0x0F));
+
+        MapInvalidateTile({ hedgePos, tileElement->getBaseZ(), tileElement->getClearanceZ() });
+        return;
+    } while (!(tileElement++)->isLastForTile());
+}
+
+/**
+ * Removes the hedge walls for an entrance placement.
+ *  rct2: 0x00666CBE
+ */
+void MazeEntranceHedgeRemoval(const CoordsXYE& entrance)
+{
+    int32_t direction = entrance.element->getDirection();
+    auto hedgePos = entrance + CoordsDirectionDelta[direction];
+    int32_t z = entrance.element->getBaseZ();
+    RideId rideIndex = entrance.element->asEntrance()->getRideIndex();
+
+    auto tileElement = MapGetFirstElementAt(hedgePos);
+    if (tileElement == nullptr)
+        return;
+    do
+    {
+        if (tileElement->getType() != TileElementType::track)
+            continue;
+        if (tileElement->asTrack()->getRideIndex() != rideIndex)
+            continue;
+        if (tileElement->getBaseZ() != z)
+            continue;
+        if (tileElement->asTrack()->getTrackType() != TrackElemType::maze)
+            continue;
+
+        // Each maze element is split into 4 sections with 4 different walls
+        uint8_t mazeSection = direction * 4;
+        // Remove the top outer wall
+        tileElement->asTrack()->mazeEntrySubtract(1 << ((mazeSection + 9) & 0x0F));
+        // Remove the bottom outer wall
+        tileElement->asTrack()->mazeEntrySubtract(1 << ((mazeSection + 12) & 0x0F));
+        // Remove the intersecting wall
+        tileElement->asTrack()->mazeEntrySubtract(1 << ((mazeSection + 10) & 0x0F));
+        // Remove the top hedge section
+        tileElement->asTrack()->mazeEntrySubtract(1 << ((mazeSection + 11) & 0x0F));
+        // Remove the bottom hedge section
+        tileElement->asTrack()->mazeEntrySubtract(1 << ((mazeSection + 15) & 0x0F));
+
+        MapInvalidateTile({ hedgePos, tileElement->getBaseZ(), tileElement->getClearanceZ() });
+        return;
+    } while (!(tileElement++)->isLastForTile());
+}
+
+void ParkEntranceFixLocations()
+{
+    auto& park = getGameState().park;
+    // Fix ParkEntrance locations for which the tile_element no longer exists
+    park.entrances.erase(
+        std::remove_if(
+            park.entrances.begin(), park.entrances.end(),
+            [](const auto& entrance) { return MapGetParkEntranceElementAt(entrance, false) == nullptr; }),
+        park.entrances.end());
+}
+
+void ParkEntranceUpdateLocations()
+{
+    auto& park = getGameState().park;
+    park.entrances.clear();
+    TileElementIterator it;
+    TileElementIteratorBegin(&it);
+    while (TileElementIteratorNext(&it))
+    {
+        auto entranceElement = it.element->asEntrance();
+        if (entranceElement != nullptr && entranceElement->getEntranceType() == EntranceType::parkEntrance
+            && entranceElement->getSequenceIndex() == ParkEntranceSequence::centre && !entranceElement->isGhost())
+        {
+            auto entrance = TileCoordsXYZD(it.x, it.y, it.element->baseHeight, it.element->getDirection()).toCoordsXYZD();
+            park.entrances.push_back(entrance);
+        }
+    }
+}

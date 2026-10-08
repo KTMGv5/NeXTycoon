@@ -1,0 +1,78 @@
+/*****************************************************************************
+ * Copyright (c) 2014-2026 OpenRCT2 developers
+ *
+ * For a complete list of all authors, please refer to contributors.md
+ * Interested in contributing? Visit https://github.com/OpenRCT2/OpenRCT2
+ *
+ * OpenRCT2 is licensed under the GNU General Public License version 3.
+ *****************************************************************************/
+
+#pragma once
+
+#include "../../../SpriteIds.h"
+#include "../../../drawing/LightFX.h"
+#include "../../RideData.h"
+#include "../../RideStringIds.h"
+#include "../../ShopItem.h"
+
+// clang-format off
+namespace OpenRCT2
+{
+constexpr RideTypeDescriptor kFlyingSaucersRTD =
+{
+    .Category = RideCategory::gentle,
+    .StartTrackPiece = TrackElemType::flatTrack4x4,
+    .TrackPaintFunctions = TrackDrawerDescriptor({
+        .trackStyle = TrackStyle::flyingSaucers,
+        .enabledTrackGroups = {},
+        .extraTrackGroups = {},
+    }),
+    .InvertedTrackPaintFunctions = {},
+    .flags = RtdFlags(RtdFlag::hasTrackColourMain, RtdFlag::hasTrackColourAdditional,
+                     RtdFlag::hasSinglePieceStation, RtdFlag::cannotHaveGaps, RtdFlag::noTestMode,
+                     RtdFlag::noWallsAroundTrack, RtdFlag::isFlatRide, RtdFlag::hasVehicleColours,
+                     RtdFlag::hasMusicByDefault, RtdFlag::allowMusic, RtdFlag::hasEntranceAndExit,
+                     RtdFlag::singleSession, RtdFlag::interestingToLookAt),
+    .rideModes = { RideMode::dodgems },
+    .DefaultMode = RideMode::dodgems,
+    .OperatingSettings = { 20, 180 },
+    .Naming = { STR_RIDE_NAME_FLYING_SAUCERS, STR_RIDE_DESCRIPTION_FLYING_SAUCERS },
+    .NameConvention = { RideComponentType::car, RideComponentType::building, RideComponentType::station },
+    .availableBreakdowns = { Breakdown::safetyCutOut },
+    .Heights = { 9, 48, 2, 2, },
+    .MaxMass = 255,
+    .LiftData = { Audio::SoundId::null, 5, 5 },
+    .RatingsMultipliers = { 50, 25, 0 },
+    .UpkeepCosts = { 90, 1, 0, 5, 0, 0 },
+    .BuildCosts = { 35.00_GBP, 2.00_GBP, 1, },
+    .DefaultPrices = { 15, 0 },
+    .DefaultMusic = kMusicObjectRock1,
+    .PhotoItem = ShopItem::photo,
+    .BonusValue = 35,
+    .ColourPresets = TRACK_COLOUR_PRESETS(
+        { Drawing::Colour::darkPurple, Drawing::Colour::grey, Drawing::Colour::black },
+        { Drawing::Colour::black, Drawing::Colour::yellow, Drawing::Colour::black },
+        { Drawing::Colour::yellow, Drawing::Colour::saturatedRed, Drawing::Colour::black },
+        { Drawing::Colour::icyBlue, Drawing::Colour::white, Drawing::Colour::black },
+    ),
+    .ColourPreview = { SPR_RIDE_DESIGN_PREVIEW_FLYING_SAUCERS_TRACK, 0 },
+    .ColourKey = RideColourKey::ride,
+    .Name = "flying_saucers",
+    .RatingsData =
+    {
+        RatingsCalculationType::flatRide,
+        { RideRating::make(2, 40), RideRating::make(0, 55), RideRating::make(0, 39) },
+        32,
+        0,
+        false,
+        {
+            // Special case, passing -2 to represent division by 2
+            { RatingsModifierType::bonusOperationOption, 0, 1, -2, 0 },
+            { RatingsModifierType::bonusNumTrains,       4, RideRating::make(0, 80), 0, 0 },
+            { RatingsModifierType::bonusScenery,         0, 5577, 0, 0 },
+        },
+    },
+    .LightFXAddLightsMagicVehicle = Drawing::LightFx::AddLightsMagicVehicle_BoatHire,
+};
+} // namespace OpenRCT2
+// clang-format on

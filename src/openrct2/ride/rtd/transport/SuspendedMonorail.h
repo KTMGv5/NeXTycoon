@@ -1,0 +1,84 @@
+/*****************************************************************************
+ * Copyright (c) 2014-2026 OpenRCT2 developers
+ *
+ * For a complete list of all authors, please refer to contributors.md
+ * Interested in contributing? Visit https://github.com/OpenRCT2/OpenRCT2
+ *
+ * OpenRCT2 is licensed under the GNU General Public License version 3.
+ *****************************************************************************/
+
+#pragma once
+
+#include "../../../SpriteIds.h"
+#include "../../RideData.h"
+#include "../../RideStringIds.h"
+#include "../../ShopItem.h"
+
+// clang-format off
+namespace OpenRCT2
+{
+constexpr RideTypeDescriptor kSuspendedMonorailRTD =
+{
+    .Category = RideCategory::transport,
+    .StartTrackPiece = TrackElemType::endStation,
+    .TrackPaintFunctions = TrackDrawerDescriptor({
+        .trackStyle = TrackStyle::suspendedMonorail,
+        .supportType = MetalSupportType::boxed,
+        .enabledTrackGroups = {TrackGroup::straight, TrackGroup::stationEnd, TrackGroup::slope, TrackGroup::sBend, TrackGroup::curveSmall, TrackGroup::curve, TrackGroup::curveLarge, TrackGroup::diagSlope},
+        .extraTrackGroups = {},
+    }),
+    .InvertedTrackPaintFunctions = {},
+    .flags = kRtdFlagsHasThreeColours | RtdFlags(RtdFlag::canSynchroniseWithAdjacentStations,
+                     RtdFlag::hasLeaveWhenAnotherVehicleArrivesAtStation,
+                     RtdFlag::hasDataLogging, RtdFlag::hasLoadOptions, RtdFlag::hasVehicleColours,
+                     RtdFlag::hasTrack, RtdFlag::supportsMultipleColourSchemes,
+                     RtdFlag::allowMusic, RtdFlag::hasEntranceAndExit, RtdFlag::allowMoreVehiclesThanStationFits,
+                     RtdFlag::allowMultipleCircuits, RtdFlag::isTransportRide, RtdFlag::showInTrackDesigner,
+                     RtdFlag::isSuspended),
+    .rideModes = { RideMode::continuousCircuit, RideMode::shuttle },
+    .DefaultMode = RideMode::continuousCircuit,
+    .OperatingSettings = { 5, 27 },
+    .Naming = { STR_RIDE_NAME_SUSPENDED_MONORAIL, STR_RIDE_DESCRIPTION_SUSPENDED_MONORAIL },
+    .NameConvention = { RideComponentType::train, RideComponentType::track, RideComponentType::station },
+    .availableBreakdowns = { Breakdown::safetyCutOut, Breakdown::doorsStuckClosed, Breakdown::doorsStuckOpen, Breakdown::vehicleMalfunction },
+    .Heights = { 12, 40, 32, 8, },
+    .MaxMass = 78,
+    .LiftData = { Audio::SoundId::null, 5, 5 },
+    .RatingsMultipliers = { 70, 6, -10 },
+    .UpkeepCosts = { 70, 20, 0, 10, 3, 10 },
+    .BuildCosts = { 32.50_GBP, 2.50_GBP, 50, },
+    .DefaultPrices = { 10, 0 },
+    .DefaultMusic = kMusicObjectSummer,
+    .PhotoItem = ShopItem::photo,
+    .BonusValue = 60,
+    .ColourPresets = TRACK_COLOUR_PRESETS(
+        { Drawing::Colour::bordeauxRed, Drawing::Colour::black, Drawing::Colour::black },
+        { Drawing::Colour::darkPurple, Drawing::Colour::darkPurple, Drawing::Colour::black },
+        { Drawing::Colour::darkGreen, Drawing::Colour::darkGreen, Drawing::Colour::black },
+    ),
+    .ColourPreview = { SPR_RIDE_DESIGN_PREVIEW_SUSPENDED_MONORAIL_TRACK, SPR_RIDE_DESIGN_PREVIEW_SUSPENDED_MONORAIL_SUPPORTS },
+    .ColourKey = RideColourKey::ride,
+    .Name = "suspended_monorail",
+    .RatingsData =
+    {
+        RatingsCalculationType::normal,
+        { RideRating::make(2, 15), RideRating::make(0, 23), RideRating::make(0, 8) },
+        14,
+        kDynamicRideShelterRating,
+        false,
+        {
+            { RatingsModifierType::bonusLength,            6000,             764, 0, 0 },
+            { RatingsModifierType::bonusTrainLength,       0,                93622, 0, 0 },
+            { RatingsModifierType::bonusMaxSpeed,          0,                44281, 70849, 35424 },
+            { RatingsModifierType::bonusAverageSpeed,      0,                291271, 218453, 0 },
+            { RatingsModifierType::bonusDuration,          150,              21845, 0, 0 },
+            { RatingsModifierType::bonusSheltered,         0,                5140, 6553, 18724 },
+            { RatingsModifierType::bonusProximity,         0,                12525, 0, 0 },
+            { RatingsModifierType::bonusScenery,           0,                25098, 0, 0 },
+            { RatingsModifierType::requirementLength,      0xAA0000,         2, 2, 2 },
+            { RatingsModifierType::requirementUnsheltered, 4,                4, 1, 1 },
+        },
+    },
+};
+} // namespace OpenRCT2
+// clang-format on

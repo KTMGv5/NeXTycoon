@@ -1,0 +1,184 @@
+/*****************************************************************************
+ * Copyright (c) 2014-2026 OpenRCT2 developers
+ *
+ * For a complete list of all authors, please refer to contributors.md
+ * Interested in contributing? Visit https://github.com/OpenRCT2/OpenRCT2
+ *
+ * OpenRCT2 is licensed under the GNU General Public License version 3.
+ *****************************************************************************/
+
+#include "Paint.Entity.h"
+
+#include "../entity/EntityList.h"
+#include "../entity/Staff.h"
+#include "../interface/Viewport.h"
+#include "../profiling/Profiling.h"
+#include "../ride/TrackDesign.h"
+#include "../world/Map.h"
+#include "Paint.h"
+#include "entity/Paint.Balloon.h"
+#include "entity/Paint.CrashSplashParticle.h"
+#include "entity/Paint.Duck.h"
+#include "entity/Paint.ExplosionCloud.h"
+#include "entity/Paint.ExplosionFlare.h"
+#include "entity/Paint.Guest.h"
+#include "entity/Paint.JumpingFountain.h"
+#include "entity/Paint.Litter.h"
+#include "entity/Paint.MoneyEffect.h"
+#include "entity/Paint.Staff.h"
+#include "entity/Paint.SteamParticle.h"
+#include "entity/Paint.Vehicle.h"
+#include "entity/Paint.VehicleCrashParticle.h"
+
+#include <cassert>
+
+using namespace OpenRCT2;
+using namespace OpenRCT2::Drawing;
+
+/**
+ * Paint Quadrant
+ *  rct2: 0x0069E8B0
+ */
+void EntityPaintSetup(PaintSession& session, const CoordsXY& pos)
+{
+    PROFILED_FUNCTION();
+
+    if (!MapIsLocationValid(pos))
+    {
+        return;
+    }
+    if (gTrackDesignSaveMode || session.ViewFlags.has(ViewportFlag::hideEntities))
+    {
+        return;
+    }
+
+    if (session.rt.zoom_level > ZoomLevel{ 3 })
+    {
+        return;
+    }
+
+    const bool highlightPathIssues = session.ViewFlags.has(ViewportFlag::highlightPathIssues);
+
+    for (auto* entity : EntityTileList(pos))
+    {
+        // When zoomed out (4x or 8x), peeps, staff, and litter are sub-pixel specks.
+        // Rendering only vehicles preserves visible train motion while preventing
+        // sorting tens of thousands of microscopic entities.
+        if (session.rt.zoom_level >= ZoomLevel{ 2 } && entity->type != EntityType::vehicle)
+        {
+            continue;
+        }
+        if (highlightPathIssues)
+        {
+            const auto staff = entity->as<Staff>();
+            if (staff != nullptr)
+            {
+                if (staff->assignedStaffType != StaffType::handyman)
+                {
+                    continue;
+                }
+            }
+            else if (entity->type != EntityType::litter)
+            {
+                continue;
+            }
+        }
+
+        const auto entityPos = entity->getLocation();
+
+        // Only paint sprites that are below the clip height and inside the clip selection.
+        // Here converting from land/path/etc height scale to pixel height scale.
+        // Note: peeps/scenery on slopes will be above the base
+        // height of the slope element, and consequently clipped.
+        if (session.ViewFlags.has(ViewportFlag::clipView))
+        {
+            if (entityPos.z > (gClipHeight * kCoordsZStep))
+            {
+                // see-through off: don't paint this entity at all
+                // see-through on: paint this entity as partial or hidden later on
+                if (!session.ViewFlags.has(ViewportFlag::clipViewSeeThrough))
+                {
+                    continue;
+                }
+            }
+            if (entityPos.x < gClipSelectionA.x || entityPos.x > (gClipSelectionB.x + kCoordsXYStep - 1))
+            {
+                continue;
+            }
+            if (entityPos.y < gClipSelectionA.y || entityPos.y > (gClipSelectionB.y + kCoordsXYStep - 1))
+            {
+                continue;
+            }
+        }
+
+        auto screenCoords = Translate3DTo2DWithZ(session.CurrentRotation, entity->getLocation());
+        auto spriteRect = ScreenRect(
+            screenCoords - ScreenCoordsXY{ entity->spriteData.width, entity->spriteData.heightMin },
+            screenCoords + ScreenCoordsXY{ entity->spriteData.width, entity->spriteData.heightMax });
+
+        const ZoomLevel zoom = session.rt.zoom_level;
+        if (session.rt.y + session.rt.height <= zoom.ApplyInversedTo(spriteRect.getTop())
+            || zoom.ApplyInversedTo(spriteRect.getBottom()) <= session.rt.y
+            || session.rt.x + session.rt.width <= zoom.ApplyInversedTo(spriteRect.getLeft())
+            || zoom.ApplyInversedTo(spriteRect.getRight()) <= session.rt.x)
+        {
+            continue;
+        }
+
+        int32_t image_direction = session.CurrentRotation;
+        image_direction <<= 3;
+        image_direction += entity->orientation;
+        image_direction &= 0x1F;
+
+        session.CurrentlyDrawnEntity = entity;
+        session.SpritePosition.x = entityPos.x;
+        session.SpritePosition.y = entityPos.y;
+        session.InteractionType = ViewportInteractionItem::entity;
+
+        switch (entity->type)
+        {
+            case EntityType::vehicle:
+                PaintVehicle(session, *entity->cast<Vehicle>(), image_direction);
+                break;
+            case EntityType::guest:
+                PaintGuest(session, *entity->cast<Guest>(), image_direction);
+                break;
+            case EntityType::staff:
+                PaintStaff(session, *entity->cast<Staff>(), image_direction);
+                break;
+            case EntityType::steamParticle:
+                PaintSteamParticle(session, *entity->cast<SteamParticle>());
+                break;
+            case EntityType::moneyEffect:
+                PaintMoneyEffect(session, *entity->cast<MoneyEffect>());
+                break;
+            case EntityType::crashedVehicleParticle:
+                PaintVehicleCrashParticle(session, *entity->cast<VehicleCrashParticle>());
+                break;
+            case EntityType::explosionCloud:
+                PaintExplosionCloud(session, *entity->cast<ExplosionCloud>());
+                break;
+            case EntityType::crashSplash:
+                PaintCrashSplashParticle(session, *entity->cast<CrashSplashParticle>());
+                break;
+            case EntityType::explosionFlare:
+                PaintExplosionFlare(session, *entity->cast<ExplosionFlare>());
+                break;
+            case EntityType::jumpingFountain:
+                PaintJumpingFountain(session, *entity->cast<JumpingFountain>(), image_direction);
+                break;
+            case EntityType::balloon:
+                PaintBalloon(session, *entity->cast<Balloon>(), image_direction);
+                break;
+            case EntityType::duck:
+                PaintDuck(session, *entity->cast<Duck>(), image_direction);
+                break;
+            case EntityType::litter:
+                PaintLitter(session, *entity->cast<Litter>(), image_direction);
+                break;
+            default:
+                assert(false);
+                break;
+        }
+    }
+}

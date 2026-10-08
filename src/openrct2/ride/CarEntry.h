@@ -1,0 +1,252 @@
+/*****************************************************************************
+ * Copyright (c) 2014-2026 OpenRCT2 developers
+ *
+ * For a complete list of all authors, please refer to contributors.md
+ * Interested in contributing? Visit https://github.com/OpenRCT2/OpenRCT2
+ *
+ * OpenRCT2 is licensed under the GNU General Public License version 3.
+ *****************************************************************************/
+
+#pragma once
+
+#include "../core/EnumUtils.hpp"
+#include "../core/FlagHolder.hpp"
+#include "../entity/Yaw.hpp"
+#include "../world/Location.hpp"
+
+#include <array>
+#include <cstdint>
+#include <vector>
+
+namespace OpenRCT2::Audio
+{
+    enum class SoundId : uint8_t;
+}
+
+namespace OpenRCT2
+{
+    enum class EffectVisual : uint8_t;
+    enum class SoundRange : uint8_t;
+    enum class VehiclePaintStyle : uint8_t;
+} // namespace OpenRCT2
+
+enum class CarEntryAnimation : uint8_t
+{
+    none = 0,
+    simpleVehicle,
+    steamLocomotive,
+    swanBoat,
+    monorailCycle,
+    multiDimension,
+    observationTower,
+    animalFlying,
+    count,
+};
+
+enum class CarEntryFlag : uint8_t
+{
+    /*
+     * Set on powered vehicles that freely accelerate downhill, like the ghost train and log flume. When unset, powered
+     * vehicles apply brakes when going downhill.
+     */
+    isPoweredRideWithUnrestrictedGravity,
+    hasNoUpstopWheels,
+    hasNoUpstopWheelsBobsleigh,
+    isMiniGolf,
+    isReverserCoasterBogie,
+    isReverserCoasterPassengerCar,
+    /*
+     * Set on vehicles that support running inverted for extended periods of time,i.e. the Flying,
+     * Lay-down and Multi-dimension RCs
+     */
+    hasInvertedSpriteSet,
+    // When set the vehicle has an additional frame for when in use. Used only by dodgems.
+    hasDodgemInUseLights,
+    // Not used anymore - every vehicle works with doors in OpenRCT2
+    allowDoorsDeprecated,
+    enableTertiaryColour,
+    // Only used during loading of the objects
+    recalculateSpriteBounds,
+    // Instead of the default 32 rotation frames. Only used for boat hire and works only for non sloped sprites.
+    use16RotationFrames,
+    /*
+     * Setting this will cause the game to set carEntry->num_vertical_frames to carEntry->num_vertical_frames_override,
+     * rather than determining it itself
+     */
+    overrideNumberOfVerticalFrames,
+    /*
+     * Used together with hasInvertedSpriteSet and recalculateSpriteBounds, includes the inverted sprites into the function
+     * that recalculates the sprite bounds if the vehicle combines the spinning carriage and non-spinning undercarriage
+     * in the same sprite.
+     */
+    spriteBoundsIncludeInvertedSet,
+    hasSpinningCombinedWithNonSpinning,
+    isLift,
+    enableTrimColour,
+    hasSwinging,
+    hasSpinning,
+    isPowered,
+    // Only valid for front/default car of train
+    hasScreamingRiders,
+    // Suspended swinging coaster, or bobsleigh if useSlideSwing flag is also enabled
+    useSuspendedSwing,
+    useBoatHireCollisionDetection,
+    // Set on animated vehicles like the Multi-dimension coaster trains, Miniature Railway locomotives and Helicycles
+    hasVehicleAnimation,
+    // Set when the animation updates rider sprite positions
+    hasRiderAnimation,
+    useWoodenWildMouseSwing,
+    // Peep loading positions have x and y coordinates. Normal rides just have offsets.
+    loadingWaypoints,
+    /*
+     * Set on dinghy slides. They have their own swing value calculations and have a different amount of images.
+     * Also set on bobsleighs together with the suspendedSwing flag.
+     */
+    useSlideSwing,
+    isChairlift,
+    // Set on rides where water would provide continuous propulsion
+    isWaterRide,
+    isGoKart,
+    useDodgemCarPlacement,
+    enableBodyColour,
+};
+using CarEntryFlags = FlagHolder<uint64_t, CarEntryFlag>;
+
+/*
+ * When adding a sprite group, add multiplier to SpriteGroupMultiplier in RideObject.cpp and add sprite group data to cable
+ * lift hill vehicle in RideData.cpp and update the SpriteGroups interface in distribution/scripting/openrct2.d.ts
+ */
+enum class SpriteGroupType : uint8_t
+{
+    slopeFlat = 0,
+    slopes12,
+    slopes25,
+    slopes42,
+    slopes60,
+    slopes75,
+    slopes90,
+    slopesLoop,
+    slopeInverted,
+    slopes8,
+    slopes16,
+    slopes50,
+    flatBanked22,
+    flatBanked45,
+    flatBanked67,
+    flatBanked90,
+    inlineTwists,
+    slopes12Banked22,
+    slopes8Banked22,
+    slopes25Banked22,
+    slopes8Banked45,
+    slopes16Banked22,
+    slopes16Banked45,
+    slopes25Banked45,
+    slopes12Banked45,
+    slopes25Banked67,
+    slopes25Banked90,
+    slopes25InlineTwists,
+    slopes42Banked22,
+    slopes42Banked45,
+    slopes42Banked67,
+    slopes42Banked90,
+    slopes60Banked22,
+    slopes50Banked45,
+    slopes50Banked67,
+    slopes50Banked90,
+    corkscrews,
+    restraintAnimation,
+    curvedLiftHillUp,
+    curvedLiftHillDown,
+    count
+};
+
+static constexpr const char* kSpriteGroupNames[] = {
+    "slopeFlat",        "slopes12",
+    "slopes25",         "slopes42",
+    "slopes60",         "slopes75",
+    "slopes90",         "slopesLoop",
+    "slopeInverted",    "slopes8",
+    "slopes16",         "slopes50",
+    "flatBanked22",     "flatBanked45",
+    "flatBanked67",     "flatBanked90",
+    "inlineTwists",     "slopes12Banked22",
+    "slopes8Banked22",  "slopes25Banked22",
+    "slopes8Banked45",  "slopes16Banked22",
+    "slopes16Banked45", "slopes25Banked45",
+    "slopes12Banked45", "slopes25Banked67",
+    "slopes25Banked90", "slopes25InlineTwists",
+    "slopes42Banked22", "slopes42Banked45",
+    "slopes42Banked67", "slopes42Banked90",
+    "slopes60Banked22", "slopes50Banked45",
+    "slopes50Banked67", "slopes50Banked90",
+    "corkscrews",       "restraintAnimation",
+    "curvedLiftHillUp", "curvedLiftHillDown",
+};
+static_assert(std::size(kSpriteGroupNames) == EnumValue(SpriteGroupType::count));
+
+struct VehicleSpriteGroup
+{
+    uint32_t imageId{};
+    OpenRCT2::Entity::Yaw::SpritePrecision spritePrecision{};
+    bool isEnabled() const
+    {
+        return spritePrecision != OpenRCT2::Entity::Yaw::SpritePrecision::none;
+    }
+};
+
+/**
+ * Ride type vehicle structure.
+ */
+struct CarEntry
+{
+    uint16_t tabRotationMask;
+    uint32_t spacing;
+    uint16_t carMass;
+    int8_t tabHeight;
+    uint8_t numSeats;
+    uint8_t spriteWidth;
+    uint8_t spriteHeightNegative;
+    uint8_t spriteHeightPositive;
+    CarEntryAnimation animation;
+    CarEntryFlags flags;
+    uint16_t baseNumFrames; // The number of sprites of animation or swinging per rotation frame
+    uint32_t baseImageId;
+    VehicleSpriteGroup spriteGroups[EnumValue(SpriteGroupType::count)];
+    uint32_t numCarImages;
+    uint8_t numSeatingRows;
+    uint8_t spinningInertia;
+    uint8_t spinningFriction;
+    OpenRCT2::Audio::SoundId frictionSoundId; // Only valid for front/default car of train
+    uint8_t reversedCarIndex; // When the car is reversed (using a turntable or reverser), it will be changed to this car.
+    OpenRCT2::SoundRange soundRange;
+    uint8_t doubleSoundFrequency; // (Doubles the velocity when working out the sound frequency {used on go karts})
+    uint8_t poweredAcceleration;
+    uint8_t poweredMaxSpeed;
+    OpenRCT2::VehiclePaintStyle paintStyle;
+    OpenRCT2::EffectVisual effectVisual;
+    uint8_t drawOrder;
+    uint8_t numVerticalFramesOverride; // A custom number that can be used rather than letting RCT2 determine it.
+    // Needs the overrideNumberOfVerticalFrames CarEntryFlag to be set.
+    uint8_t guestLoadingWaypointSegments;
+    uint16_t animationSpeed;
+    uint8_t animationFrames;
+    struct
+    {
+        int8_t longitudinal;
+        int8_t vertical;
+    } steamEffect;
+    uint8_t spinningNumFrames;
+    std::vector<std::array<CoordsXY, 3>> guestLoadingWaypoints = {};
+    std::vector<int8_t> guestLoadingPositions = {};
+
+    uint32_t numRotationSprites(SpriteGroupType rotationType) const;
+    int32_t spriteByYaw(int32_t yaw, SpriteGroupType rotationType) const;
+    bool groupEnabled(SpriteGroupType rotationType) const;
+    uint32_t groupImageId(SpriteGroupType spriteGroup) const;
+    uint32_t getSpriteOffset(SpriteGroupType spriteGroup, int32_t imageDirection, uint8_t rankIndex) const;
+
+    bool isVisible() const;
+};
+
+void CarEntrySetImageMaxSizes(CarEntry& carEntry, int32_t numImages);

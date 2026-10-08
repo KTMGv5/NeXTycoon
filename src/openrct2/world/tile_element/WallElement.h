@@ -1,0 +1,83 @@
+/*****************************************************************************
+ * Copyright (c) 2014-2026 OpenRCT2 developers
+ *
+ * For a complete list of all authors, please refer to contributors.md
+ * Interested in contributing? Visit https://github.com/OpenRCT2/OpenRCT2
+ *
+ * OpenRCT2 is licensed under the GNU General Public License version 3.
+ *****************************************************************************/
+
+#pragma once
+
+#include "../../Identifiers.h"
+#include "../../object/ObjectTypes.h"
+#include "../Banner.h"
+#include "TileElementBase.h"
+
+#include <cstdint>
+
+namespace OpenRCT2
+{
+    struct WallSceneryEntry;
+
+    enum
+    {
+        WALL_ANIMATION_FLAG_IS_ANIMATING = (1 << 1),
+        WALL_ANIMATION_FLAG_ACROSS_TRACK = (1 << 2),
+        // 3 - 6 animation frame number
+        WALL_ANIMATION_FLAG_DIRECTION_BACKWARD = (1 << 7),
+        WALL_ANIMATION_FLAG_ALL_FLAGS = WALL_ANIMATION_FLAG_IS_ANIMATING | WALL_ANIMATION_FLAG_ACROSS_TRACK
+            | WALL_ANIMATION_FLAG_DIRECTION_BACKWARD
+    };
+
+#pragma pack(push, 1)
+    struct WallElement : TileElementBase
+    {
+        static constexpr TileElementType kElementType = TileElementType::wall;
+
+    private:
+        ObjectEntryIndex entryIndex; // 05
+        Drawing::Colour colour1;     // 07
+        Drawing::Colour colour2;     // 08
+        Drawing::Colour colour3;     // 09
+        BannerIndex bannerIndex;     // 0A
+        uint8_t animation; // 0C 0b_dfff_fta0 d = direction, f = frame num, t = across track flag (not used), a = animating
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wunused-private-field"
+        uint8_t pad0D[3];
+#pragma clang diagnostic pop
+
+    public:
+        uint16_t getEntryIndex() const;
+        void setEntryIndex(uint16_t newIndex);
+        const WallSceneryEntry* getEntry() const;
+
+        uint8_t getSlope() const;
+        void setSlope(uint8_t newslope);
+
+        Drawing::Colour getPrimaryColour() const;
+        void setPrimaryColour(Drawing::Colour newColour);
+        Drawing::Colour getSecondaryColour() const;
+        void setSecondaryColour(Drawing::Colour newColour);
+        Drawing::Colour getTertiaryColour() const;
+        void setTertiaryColour(Drawing::Colour newColour);
+
+        uint8_t getAnimationFrame() const;
+        void setAnimationFrame(uint8_t frameNum);
+
+        bool isAnimating() const;
+        void setIsAnimating(bool isAnimating);
+
+        Banner* getBanner() const;
+        BannerIndex getBannerIndex() const;
+        void setBannerIndex(BannerIndex newIndex);
+
+        bool isAcrossTrack() const;
+        void setAcrossTrack(bool acrossTrack);
+        bool animationIsBackwards() const;
+        void setAnimationIsBackwards(bool isBackwards);
+    };
+    static_assert(sizeof(WallElement) == kTileElementSize);
+
+#pragma pack(pop)
+} // namespace OpenRCT2

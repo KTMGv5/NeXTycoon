@@ -1,0 +1,157 @@
+/*****************************************************************************
+ * Copyright (c) 2021 OpenRCT2 developers
+ *
+ * For a complete list of all authors, please refer to contributors.md
+ * Interested in contributing? Visit https://github.com/OpenRCT2/OpenRCT2
+ *
+ * OpenRCT2 is licensed under the GNU General Public License version 3.
+ *****************************************************************************/
+
+#ifdef ENABLE_SCRIPTING
+
+    #include "ScRideStation.hpp"
+
+    #include "../../../ride/Ride.h"
+
+namespace OpenRCT2::Scripting
+{
+    void ScRideStation::Register(JSContext* ctx)
+    {
+        static constexpr JSCFunctionListEntry funcs[] = {
+            JS_CGETSET_DEF("start", ScRideStation::start_get, ScRideStation::start_set),
+            JS_CGETSET_DEF("length", ScRideStation::length_get, ScRideStation::length_set),
+            JS_CGETSET_DEF("entrance", ScRideStation::entrance_get, ScRideStation::entrance_set),
+            JS_CGETSET_DEF("exit", ScRideStation::exit_get, ScRideStation::exit_set),
+            JS_CGETSET_DEF("queueTime", ScRideStation::queueTime_get, nullptr),
+        };
+        RegisterBase(ctx, "RideStation", Finalize, funcs);
+    }
+
+    JSValue ScRideStation::New(JSContext* ctx, RideId rideId, StationIndex stationIndex)
+    {
+        return MakeWithOpaque(ctx, new RideStationData{ rideId, stationIndex });
+    }
+
+    void ScRideStation::Finalize(JSRuntime* rt, JSValue thisVal)
+    {
+        RideStationData* data = GetRideStationData(thisVal);
+        if (data)
+            delete data;
+    }
+
+    ScRideStation::RideStationData* ScRideStation::GetRideStationData(JSValue thisVal)
+    {
+        return gScRideStation.GetOpaque<RideStationData*>(thisVal);
+    }
+
+    RideStation* ScRideStation::GetRideStation(JSValue thisVal)
+    {
+        RideStationData* data = GetRideStationData(thisVal);
+        auto ride = OpenRCT2::GetRide(data->_rideId);
+        if (ride != nullptr)
+        {
+            if (data->_stationIndex.ToUnderlying() < std::size(ride->getStations()))
+            {
+                return &ride->getStation(data->_stationIndex);
+            }
+        }
+        return nullptr;
+    }
+
+    JSValue ScRideStation::start_get(JSContext* ctx, JSValue thisVal)
+    {
+        auto station = GetRideStation(thisVal);
+        if (station != nullptr)
+        {
+            auto start = CoordsXYZ(station->start, station->getBaseZ());
+            return ToJSValue(ctx, start);
+        }
+        return JS_NULL;
+    }
+
+    JSValue ScRideStation::start_set(JSContext* ctx, JSValue thisVal, JSValue value)
+    {
+        JS_THROW_IF_GAME_STATE_NOT_MUTABLE();
+
+        auto station = GetRideStation(thisVal);
+        if (station != nullptr)
+        {
+            auto start = JStoCoordsXYZ(ctx, value);
+            station->start = { start.x, start.y };
+            station->setBaseZ(start.z);
+        }
+        return JS_UNDEFINED;
+    }
+
+    JSValue ScRideStation::length_get(JSContext* ctx, JSValue thisVal)
+    {
+        auto station = GetRideStation(thisVal);
+        return JS_NewInt32(ctx, station != nullptr ? station->length : 0);
+    }
+
+    JSValue ScRideStation::length_set(JSContext* ctx, JSValue thisVal, JSValue value)
+    {
+        JS_UNPACK_INT32(valueInt, ctx, value);
+        JS_THROW_IF_GAME_STATE_NOT_MUTABLE();
+
+        auto station = GetRideStation(thisVal);
+        if (station != nullptr)
+        {
+            station->length = valueInt;
+        }
+        return JS_UNDEFINED;
+    }
+
+    JSValue ScRideStation::entrance_get(JSContext* ctx, JSValue thisVal)
+    {
+        auto station = GetRideStation(thisVal);
+        if (station != nullptr)
+        {
+            return ToJSValue(ctx, station->entrance.toCoordsXYZD());
+        }
+        return JS_NULL;
+    }
+
+    JSValue ScRideStation::entrance_set(JSContext* ctx, JSValue thisVal, JSValue value)
+    {
+        JS_THROW_IF_GAME_STATE_NOT_MUTABLE();
+
+        auto station = GetRideStation(thisVal);
+        if (station != nullptr)
+        {
+            station->entrance = JStoCoordsXYZD(ctx, value);
+        }
+        return JS_UNDEFINED;
+    }
+
+    JSValue ScRideStation::exit_get(JSContext* ctx, JSValue thisVal)
+    {
+        auto station = GetRideStation(thisVal);
+        if (station != nullptr)
+        {
+            return ToJSValue(ctx, station->exit.toCoordsXYZD());
+        }
+        return JS_NULL;
+    }
+
+    JSValue ScRideStation::exit_set(JSContext* ctx, JSValue thisVal, JSValue value)
+    {
+        JS_THROW_IF_GAME_STATE_NOT_MUTABLE();
+
+        auto station = GetRideStation(thisVal);
+        if (station != nullptr)
+        {
+            station->exit = JStoCoordsXYZD(ctx, value);
+        }
+        return JS_UNDEFINED;
+    }
+
+    JSValue ScRideStation::queueTime_get(JSContext* ctx, JSValue thisVal)
+    {
+        auto station = GetRideStation(thisVal);
+        return JS_NewUint32(ctx, station != nullptr ? station->queueTime : 0);
+    }
+
+} // namespace OpenRCT2::Scripting
+
+#endif

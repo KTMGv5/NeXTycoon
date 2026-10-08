@@ -1,0 +1,183 @@
+/*****************************************************************************
+ * Copyright (c) 2014-2026 OpenRCT2 developers
+ *
+ * For a complete list of all authors, please refer to contributors.md
+ * Interested in contributing? Visit https://github.com/OpenRCT2/OpenRCT2
+ *
+ * OpenRCT2 is licensed under the GNU General Public License version 3.
+ *****************************************************************************/
+#include "ViewportQuery.h"
+
+#include <algorithm>
+#include <openrct2/core/Numerics.hpp>
+#include <openrct2/interface/Viewport.h>
+#include <openrct2/interface/WindowBase.h>
+#include <openrct2/ui/WindowManager.h>
+#include <openrct2/world/Map.h>
+#include <openrct2/world/tile_element/EntranceElement.h>
+#include <openrct2/world/tile_element/PathElement.h>
+#include <openrct2/world/tile_element/TileElement.h>
+
+namespace OpenRCT2::Ui
+{
+    /**
+     * Determines the location of the footpath at which we point with the cursor. If no footpath is underneath the cursor,
+     * then return the location of the ground tile. Besides the location it also computes the direction of the yellow arrow
+     * when we are going to build a footpath bridge/tunnel.
+     *  rct2: 0x00689726
+     *  In:
+     *      screenX: eax
+     *      screenY: ebx
+     *  Out:
+     *      x: ax
+     *      y: bx
+     *      direction: ecx
+     *      tileElement: edx
+     */
+    CoordsXY FootpathGetCoordinatesFromPos(const ScreenCoordsXY& screenCoords, int32_t* direction, TileElement** tileElement)
+    {
+        auto* windowMgr = GetWindowManager();
+        WindowBase* window = windowMgr->FindFromPoint(screenCoords);
+        if (window == nullptr || window->viewport == nullptr)
+        {
+            CoordsXY position{};
+            position.setNull();
+            return position;
+        }
+        auto viewport = window->viewport;
+        auto info = GetMapCoordinatesFromPosWindow(window, screenCoords, { ViewportInteractionItem::footpath });
+        if (info.interactionType != ViewportInteractionItem::footpath
+            || !viewport->flags.hasAny(ViewportFlag::undergroundInside, ViewportFlag::hideBase, ViewportFlag::hideVertical))
+        {
+            info = GetMapCoordinatesFromPosWindow(
+                window, screenCoords, { ViewportInteractionItem::terrain, ViewportInteractionItem::footpath });
+            if (info.interactionType == ViewportInteractionItem::none)
+            {
+                auto position = info.Loc;
+                position.setNull();
+                return position;
+            }
+        }
+
+        auto minPosition = info.Loc;
+        auto maxPosition = info.Loc + CoordsXY{ 31, 31 };
+        auto myTileElement = info.Element;
+        auto position = info.Loc.toTileCentre();
+        auto z = 0;
+        if (info.interactionType == ViewportInteractionItem::footpath)
+        {
+            z = myTileElement->getBaseZ();
+            if (myTileElement->asPath()->isSloped())
+            {
+                z += 8;
+            }
+        }
+
+        auto start_vp_pos = viewport->ScreenToViewportCoord(screenCoords);
+
+        for (int32_t i = 0; i < 5; i++)
+        {
+            if (info.interactionType != ViewportInteractionItem::footpath)
+            {
+                z = TileElementHeight(position);
+            }
+            position = ViewportPosToMapPos(start_vp_pos, z, viewport->rotation);
+            position.x = std::clamp(position.x, minPosition.x, maxPosition.x);
+            position.y = std::clamp(position.y, minPosition.y, maxPosition.y);
+        }
+
+        // Determine to which edge the cursor is closest
+        uint32_t myDirection;
+        int32_t mod_x = position.x & 0x1F, mod_y = position.y & 0x1F;
+        if (mod_x < mod_y)
+        {
+            if (mod_x + mod_y < 32)
+            {
+                myDirection = 0;
+            }
+            else
+            {
+                myDirection = 1;
+            }
+        }
+        else
+        {
+            if (mod_x + mod_y < 32)
+            {
+                myDirection = 3;
+            }
+            else
+            {
+                myDirection = 2;
+            }
+        }
+
+        position = position.toTileStart();
+
+        if (direction != nullptr)
+            *direction = myDirection;
+        if (tileElement != nullptr)
+            *tileElement = myTileElement;
+
+        return position;
+    }
+
+    /**
+     *
+     *  rct2: 0x0068A0C9
+     * screenX: eax
+     * screenY: ebx
+     * x: ax
+     * y: bx
+     * direction: cl
+     * tileElement: edx
+     */
+    CoordsXY FootpathBridgeGetInfoFromPos(const ScreenCoordsXY& screenCoords, int32_t* direction, TileElement** tileElement)
+    {
+        // First check if we point at an entrance or exit. In that case, we would want the path coming from the entrance/exit.
+        auto* windowMgr = GetWindowManager();
+        WindowBase* window = windowMgr->FindFromPoint(screenCoords);
+        if (window == nullptr || window->viewport == nullptr)
+        {
+            CoordsXY ret{};
+            ret.setNull();
+            return ret;
+        }
+        auto viewport = window->viewport;
+        auto info = GetMapCoordinatesFromPosWindow(window, screenCoords, ViewportInteractionItem::ride);
+        *tileElement = info.Element;
+        if (info.interactionType == ViewportInteractionItem::ride
+            && viewport->flags.hasAny(ViewportFlag::undergroundInside, ViewportFlag::hideBase, ViewportFlag::hideVertical)
+            && (*tileElement)->getType() == TileElementType::entrance)
+        {
+            uint32_t directions = (*tileElement)->asEntrance()->getDirections();
+            if (directions & 0x0F)
+            {
+                int32_t bx = Numerics::bitScanForward(directions);
+                bx += (*tileElement)->asEntrance()->getDirection();
+                bx &= 3;
+                if (direction != nullptr)
+                    *direction = bx;
+                return info.Loc;
+            }
+        }
+
+        info = GetMapCoordinatesFromPosWindow(
+            window, screenCoords,
+            { ViewportInteractionItem::terrain, ViewportInteractionItem::footpath, ViewportInteractionItem::ride });
+        if (info.interactionType == ViewportInteractionItem::ride && (*tileElement)->getType() == TileElementType::entrance)
+        {
+            uint32_t directions = (*tileElement)->asEntrance()->getDirections();
+            if (directions & 0x0F)
+            {
+                int32_t bx = (*tileElement)->getDirectionWithOffset(Numerics::bitScanForward(directions));
+                if (direction != nullptr)
+                    *direction = bx;
+                return info.Loc;
+            }
+        }
+
+        // We point at something else
+        return FootpathGetCoordinatesFromPos(screenCoords, direction, tileElement);
+    }
+} // namespace OpenRCT2::Ui

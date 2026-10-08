@@ -1,0 +1,46 @@
+/*****************************************************************************
+ * Copyright (c) 2014-2026 OpenRCT2 developers
+ *
+ * For a complete list of all authors, please refer to contributors.md
+ * Interested in contributing? Visit https://github.com/OpenRCT2/OpenRCT2
+ *
+ * OpenRCT2 is licensed under the GNU General Public License version 3.
+ *****************************************************************************/
+
+#pragma once
+
+#include "../GameAction.hpp"
+
+namespace OpenRCT2
+{
+    class TerrainEdgeObject;
+    class TerrainSurfaceObject;
+} // namespace OpenRCT2
+
+namespace OpenRCT2::GameActions
+{
+    class SurfaceSetStyleAction final : public GameActionBase<GameCommand::changeSurfaceStyle>
+    {
+    private:
+        MapRange _range;
+        ObjectEntryIndex _surfaceStyle{};
+        ObjectEntryIndex _edgeStyle{};
+        Drawing::Colour _surfaceColour1{};
+        Drawing::Colour _edgeColour1{};
+
+        bool surfaceColour1NeedsRecolour(const SurfaceElement& surfaceElement, const TerrainSurfaceObject& surfaceObject) const;
+        bool edgeColour1NeedsRecolour(const SurfaceElement& surfaceElement, const TerrainEdgeObject& surfaceObject) const;
+
+    public:
+        SurfaceSetStyleAction() = default;
+        SurfaceSetStyleAction(
+            MapRange range, ObjectEntryIndex surfaceStyle, ObjectEntryIndex edgeStyle, Drawing::Colour surfaceColour1,
+            Drawing::Colour edgeColour1);
+
+        void AcceptParameters(GameActionParameterVisitor&) final;
+
+        void Serialise(DataSerialiser& stream) override;
+        Result Query(GameState_t& gameState, Park::ParkData& park) const override;
+        Result Execute(GameState_t& gameState, Park::ParkData& park) const override;
+    };
+} // namespace OpenRCT2::GameActions
