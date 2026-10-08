@@ -94,6 +94,7 @@
     <ClCompile Include="IniReaderTest.cpp" />
     <ClCompile Include="IniWriterTest.cpp" />
     <ClCompile Include="LocalisationTest.cpp" />
+    <ClCompile Include="LocomotionTests.cpp" />
     <ClCompile Include="MultiLaunch.cpp" />
     <ClCompile Include="NetworkTests.cpp" />
     <ClCompile Include="ReplayTests.cpp" />

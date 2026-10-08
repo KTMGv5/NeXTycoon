@@ -311,6 +311,7 @@ namespace OpenRCT2
                     return STR_OBJECT_FILTER_TT;
                 case ObjectSourceGame::openRCT2Official:
                     return STR_OBJECT_FILTER_OPENRCT2_OFFICIAL;
+                case ObjectSourceGame::locomotion:
                 default:
                     return STR_OBJECT_FILTER_CUSTOM;
             }

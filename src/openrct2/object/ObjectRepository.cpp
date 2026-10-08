@@ -620,6 +620,7 @@ namespace OpenRCT2
             case ObjectSourceGame::wackyWorlds:
             case ObjectSourceGame::timeTwister:
             case ObjectSourceGame::openRCT2Official:
+            case ObjectSourceGame::locomotion:
                 return false;
             default:
                 return true;

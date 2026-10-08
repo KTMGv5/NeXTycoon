@@ -26,7 +26,7 @@ namespace OpenRCT2::Scripting
     {
         static constexpr std::string_view values[] = { "custom", "wacky_worlds",      "time_twister",     "openrct2_official",
                                                        "rct1",   "added_attractions", "loopy_landscapes", "unknown",
-                                                       "rct2" };
+                                                       "rct2",   "locomotion" };
         if (EnumValue(sourceGame) >= std::size(values))
             return "unknown";
         return values[EnumValue(sourceGame)];

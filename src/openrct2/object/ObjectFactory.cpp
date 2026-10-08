@@ -231,6 +231,8 @@ namespace OpenRCT2::ObjectFactory
             { "rct2tt", ObjectSourceGame::timeTwister },
             { "official", ObjectSourceGame::openRCT2Official },
             { "custom", ObjectSourceGame::custom },
+            { "locomotion", ObjectSourceGame::locomotion },
+            { "loco", ObjectSourceGame::locomotion },
         };
         auto result = LookupTable.find(s);
         return (result != LookupTable.end()) ? result->second : ObjectSourceGame::custom;

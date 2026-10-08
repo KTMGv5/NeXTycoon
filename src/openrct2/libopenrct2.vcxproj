@@ -329,6 +329,9 @@
     <ClInclude Include="localisation\LocalisationService.h" />
     <ClInclude Include="localisation\StringIds.h" />
     <ClInclude Include="localisation\StringWithArgs.h" />
+    <ClInclude Include="locomotion\LocoBridge.h" />
+    <ClInclude Include="locomotion\LocoFile.h" />
+    <ClInclude Include="locomotion\Locomotion.h" />
     <ClInclude Include="management\Award.h" />
     <ClInclude Include="management\Finance.h" />
     <ClInclude Include="management\Marketing.h" />
@@ -970,6 +973,8 @@
     <ClCompile Include="localisation\LanguagePack.cpp" />
     <ClCompile Include="localisation\Localisation.Date.cpp" />
     <ClCompile Include="localisation\LocalisationService.cpp" />
+    <ClCompile Include="locomotion\LocoBridge.cpp" />
+    <ClCompile Include="locomotion\LocoFile.cpp" />
     <ClCompile Include="management\Award.cpp" />
     <ClCompile Include="management\Finance.cpp" />
     <ClCompile Include="management\Marketing.cpp" />

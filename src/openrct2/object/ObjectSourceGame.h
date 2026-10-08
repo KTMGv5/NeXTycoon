@@ -23,5 +23,6 @@ namespace OpenRCT2
         addedAttractions,
         loopyLandscapes,
         rct2 = 8,
+        locomotion = 9,
     };
 }
