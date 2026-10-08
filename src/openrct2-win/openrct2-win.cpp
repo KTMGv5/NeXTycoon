@@ -30,10 +30,25 @@
 static std::vector<std::string> GetCommandLineArgs(int argc, wchar_t** argvW);
 
 /**
- * Windows entry point to OpenRCT2 with a console window using a traditional C main function.
+ * Windows GUI entry point for NeXTycoon (no console pop-up when launched).
  */
-int wmain(int argc, wchar_t** argvW, [[maybe_unused]] wchar_t* envp)
+int WINAPI wWinMain(
+    [[maybe_unused]] HINSTANCE hInstance,
+    [[maybe_unused]] HINSTANCE hPrevInstance,
+    [[maybe_unused]] PWSTR pCmdLine,
+    [[maybe_unused]] int nCmdShow)
 {
+    // If launched from an existing terminal, attach to parent console so output is still readable
+    if (AttachConsole(ATTACH_PARENT_PROCESS))
+    {
+        FILE* fp;
+        freopen_s(&fp, "CONOUT$", "w", stdout);
+        freopen_s(&fp, "CONOUT$", "w", stderr);
+        freopen_s(&fp, "CONIN$", "r", stdin);
+    }
+
+    int argc = __argc;
+    wchar_t** argvW = __wargv;
     auto argvStrings = GetCommandLineArgs(argc, argvW);
 
     SetConsoleCP(EnumValue(OpenRCT2::CodePage::utf8));
@@ -46,6 +61,14 @@ int wmain(int argc, wchar_t** argvW, [[maybe_unused]] wchar_t* envp)
     // Ensure that argv[argc] == nullptr, as mandated by the standard
     argv.push_back(nullptr);
     return NormalisedMain(argc, argv.data());
+}
+
+/**
+ * Fallback console entry point.
+ */
+int wmain([[maybe_unused]] int argc, [[maybe_unused]] wchar_t** argvW, [[maybe_unused]] wchar_t* envp)
+{
+    return wWinMain(GetModuleHandleW(nullptr), nullptr, GetCommandLineW(), SW_SHOW);
 }
 
 static std::vector<std::string> GetCommandLineArgs(int argc, wchar_t** argvW)

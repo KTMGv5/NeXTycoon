@@ -18,7 +18,9 @@
     #define ZLIB_CONST
 #endif
 
+#include <cinttypes>
 #include <limits>
+#include <vector>
 #include <zlib.h>
 #include <zstd.h>
 
@@ -227,9 +229,7 @@ namespace OpenRCT2::Compression
         if (sourceLength > source.GetLength() - source.GetPosition())
             throw IOException("Not Enough Data to Decompress");
 
-        size_t ret;
         StreamReadBuffer sourceBuf(source, sourceLength, ZSTD_DStreamInSize());
-        StreamWriteBuffer destBuf(dest, decompressLength, ZSTD_DStreamOutSize());
 
         const auto deleter = [](ZSTD_DCtx* ptr) { ZSTD_freeDCtx(ptr); };
         std::unique_ptr<ZSTD_DCtx, decltype(deleter)> ctx(ZSTD_createDCtx(), deleter);
@@ -239,39 +239,58 @@ namespace OpenRCT2::Compression
             return false;
         }
 
-        do
+        const size_t outBufferSize = ZSTD_DStreamOutSize();
+        std::vector<uint8_t> outBuffer(outBufferSize);
+        uint64_t totalDecompressed = 0;
+
+        while (sourceBuf)
         {
             auto readBlock = sourceBuf.ReadBlock(source);
             ZSTD_inBuffer input = { readBlock.first, readBlock.second, 0 };
 
-            do
+            while (input.pos < input.size)
             {
-                if (!destBuf)
-                {
-                    LOG_ERROR("Decompressed data larger than expected");
-                    return false;
-                }
-
-                auto writeBlock = destBuf.WriteBlockStart();
-                ZSTD_outBuffer output = { writeBlock.first, writeBlock.second, 0 };
-
-                ret = ZSTD_decompressStream(ctx.get(), &output, &input);
+                ZSTD_outBuffer output = { outBuffer.data(), outBufferSize, 0 };
+                size_t ret = ZSTD_decompressStream(ctx.get(), &output, &input);
                 if (ZSTD_isError(ret))
                 {
-                    LOG_ERROR("Failed to compress data with error: %s", ZSTD_getErrorName(ret));
+                    LOG_ERROR("Failed to decompress data with error: %s", ZSTD_getErrorName(ret));
                     return false;
                 }
 
-                destBuf.WriteBlockCommit(dest, output.pos);
-            } while (input.pos < input.size || (!sourceBuf && ret > 0));
-        } while (sourceBuf);
-
-        if (destBuf)
-        {
-            LOG_ERROR("Decompressed data smaller than expected");
-            return false;
+                if (output.pos > 0)
+                {
+                    dest.Write(outBuffer.data(), output.pos);
+                    totalDecompressed += output.pos;
+                }
+            }
         }
 
+        // Flush any remaining data from the decoder
+        size_t ret = 0;
+        do
+        {
+            ZSTD_inBuffer emptyInput = { nullptr, 0, 0 };
+            ZSTD_outBuffer output = { outBuffer.data(), outBufferSize, 0 };
+            ret = ZSTD_decompressStream(ctx.get(), &output, &emptyInput);
+            if (ZSTD_isError(ret))
+            {
+                LOG_ERROR("Failed to decompress data during flush: %s", ZSTD_getErrorName(ret));
+                return false;
+            }
+            if (output.pos > 0)
+            {
+                dest.Write(outBuffer.data(), output.pos);
+                totalDecompressed += output.pos;
+            }
+        } while (ret > 0);
+
+        if (decompressLength != 0 && totalDecompressed != decompressLength)
+        {
+            LOG_WARNING("Decompressed size (%" PRIu64 ") differs from expected (%" PRIu64 ")", totalDecompressed, decompressLength);
+        }
+
+        dest.SetPosition(0);
         return true;
     }
 } // namespace OpenRCT2::Compression

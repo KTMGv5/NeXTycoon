@@ -42,12 +42,25 @@ namespace OpenRCT2::Scripting
         intransient,
     };
 
+    /**
+     * Supported scripting and native programming languages in NeXTycoon.
+     */
+    enum class PluginLanguage
+    {
+        javascript, // .js (QuickJS)
+        typescript, // .ts
+        lua,        // .lua (Lua script runtime)
+        python,     // .py (Python script runtime)
+        nativeLib,  // .dll / .so (Native C/C++ C-ABI shared library)
+    };
+
     struct PluginMetadata
     {
         std::string Name;
         std::string Version;
         std::vector<std::string> Authors;
         PluginType Type{};
+        PluginLanguage Language{ PluginLanguage::javascript };
         int32_t MinApiVersion{};
         std::optional<int32_t> TargetApiVersion{};
         JSCallback Main;
@@ -59,12 +72,15 @@ namespace OpenRCT2::Scripting
         JSContext* _context = nullptr;
         std::string _path;
         PluginMetadata _metadata{};
+        PluginLanguage _language = PluginLanguage::javascript;
         std::string _code;
         bool _hasLoaded{};
         bool _hasStarted{};
         bool _isStopping{};
 
         std::string TryGetString(JSValue value, const char* property, const std::string& message) const;
+        void DetectLanguage();
+        void LoadNonJsMetadata();
 
     public:
         std::string_view GetPath() const
@@ -85,6 +101,11 @@ namespace OpenRCT2::Scripting
         const PluginMetadata& GetMetadata() const
         {
             return _metadata;
+        }
+
+        [[nodiscard]] PluginLanguage GetLanguage() const
+        {
+            return _language;
         }
 
         void SetMetadata(JSValue obj);

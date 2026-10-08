@@ -14,6 +14,8 @@
     #include "../Context.h"
     #include "../Diagnostic.h"
     #include "../core/File.h"
+    #include "../core/Path.hpp"
+    #include "../core/String.hpp"
     #include "ScriptEngine.h"
 
 using namespace OpenRCT2::Scripting;
@@ -21,6 +23,85 @@ using namespace OpenRCT2::Scripting;
 Plugin::Plugin(std::string_view path)
     : _path(path)
 {
+    DetectLanguage();
+}
+
+void Plugin::DetectLanguage()
+{
+    if (_path.empty())
+    {
+        _language = PluginLanguage::javascript;
+        return;
+    }
+
+    auto ext = Path::GetExtension(_path);
+    if (String::iequals(ext, ".ts"))
+    {
+        _language = PluginLanguage::typescript;
+    }
+    else if (String::iequals(ext, ".lua"))
+    {
+        _language = PluginLanguage::lua;
+    }
+    else if (String::iequals(ext, ".py"))
+    {
+        _language = PluginLanguage::python;
+    }
+    else if (String::iequals(ext, ".dll") || String::iequals(ext, ".so") || String::iequals(ext, ".dylib"))
+    {
+        _language = PluginLanguage::nativeLib;
+    }
+    else
+    {
+        _language = PluginLanguage::javascript;
+    }
+    _metadata.Language = _language;
+}
+
+void Plugin::LoadNonJsMetadata()
+{
+    _metadata.Name = Path::GetFileNameWithoutExtension(_path);
+    _metadata.Version = "1.0.0";
+    _metadata.Type = PluginType::intransient;
+    _metadata.Language = _language;
+
+    // Parse simple key = "value" pairs from comments/script content if available
+    if (!_code.empty())
+    {
+        std::string_view sv = _code;
+        size_t pos = 0;
+        while (pos < sv.size())
+        {
+            size_t endOfLine = sv.find('\n', pos);
+            if (endOfLine == std::string_view::npos)
+                endOfLine = sv.size();
+
+            std::string_view line = sv.substr(pos, endOfLine - pos);
+            pos = endOfLine + 1;
+
+            auto namePos = line.find("name");
+            auto quoteStart = line.find('"', namePos != std::string_view::npos ? namePos : 0);
+            if (quoteStart != std::string_view::npos)
+            {
+                auto quoteEnd = line.find('"', quoteStart + 1);
+                if (quoteEnd != std::string_view::npos)
+                {
+                    if (line.find("name") != std::string_view::npos && line.find("=") != std::string_view::npos)
+                    {
+                        _metadata.Name = std::string(line.substr(quoteStart + 1, quoteEnd - quoteStart - 1));
+                    }
+                    else if (line.find("version") != std::string_view::npos && line.find("=") != std::string_view::npos)
+                    {
+                        _metadata.Version = std::string(line.substr(quoteStart + 1, quoteEnd - quoteStart - 1));
+                    }
+                    else if (line.find("author") != std::string_view::npos && line.find("=") != std::string_view::npos)
+                    {
+                        _metadata.Authors.push_back(std::string(line.substr(quoteStart + 1, quoteEnd - quoteStart - 1)));
+                    }
+                }
+            }
+        }
+    }
 }
 
 void Plugin::SetCode(std::string_view code)
@@ -40,11 +121,19 @@ void Plugin::Load()
     if (_context)
     {
         JS_FreeContext(_context);
+        _context = nullptr;
     }
 
     if (!_path.empty())
     {
         LoadCodeFromFile();
+    }
+
+    if (_language != PluginLanguage::javascript && _language != PluginLanguage::typescript)
+    {
+        LoadNonJsMetadata();
+        _hasLoaded = true;
+        return;
     }
 
     auto& scriptEngine = OpenRCT2::GetContext()->GetScriptEngine();
@@ -76,6 +165,12 @@ void Plugin::Start()
     if (!_hasLoaded)
     {
         throw std::runtime_error("Plugin has not been loaded.");
+    }
+
+    if (_language != PluginLanguage::javascript && _language != PluginLanguage::typescript)
+    {
+        _hasStarted = true;
+        return;
     }
 
     const JSValue mainFunc = _metadata.Main.callback;
@@ -111,6 +206,12 @@ void Plugin::StopEnd()
 
 void Plugin::Unload()
 {
+    if (_language != PluginLanguage::javascript && _language != PluginLanguage::typescript)
+    {
+        _hasLoaded = false;
+        return;
+    }
+
     if (!_context)
     {
         throw std::runtime_error("Plugin is not loaded");

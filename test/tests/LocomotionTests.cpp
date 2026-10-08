@@ -128,3 +128,28 @@ TEST(LocomotionTests, StandardIndustriesChain)
     EXPECT_TRUE(foundCoalMine);
     EXPECT_TRUE(foundSteelMill);
 }
+
+#ifdef ENABLE_SCRIPTING
+#include <openrct2/scripting/Plugin.h>
+
+TEST(PluginEngineTests, MultiLanguageDetection)
+{
+    using namespace OpenRCT2::Scripting;
+
+    Plugin jsPlugin("C:/plugins/test.js");
+    EXPECT_EQ(jsPlugin.GetLanguage(), PluginLanguage::javascript);
+
+    Plugin tsPlugin("C:/plugins/mod.ts");
+    EXPECT_EQ(tsPlugin.GetLanguage(), PluginLanguage::typescript);
+
+    Plugin luaPlugin("C:/plugins/teleport.lua");
+    EXPECT_EQ(luaPlugin.GetLanguage(), PluginLanguage::lua);
+
+    Plugin pyPlugin("C:/plugins/ai_manager.py");
+    EXPECT_EQ(pyPlugin.GetLanguage(), PluginLanguage::python);
+
+    Plugin nativePlugin("C:/plugins/highspeed_coasters.dll");
+    EXPECT_EQ(nativePlugin.GetLanguage(), PluginLanguage::nativeLib);
+}
+#endif
+

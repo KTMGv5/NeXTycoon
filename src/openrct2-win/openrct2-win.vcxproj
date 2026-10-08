@@ -61,7 +61,7 @@
     <Link>
       <AdditionalDependencies>libopenrct2.lib;libopenrct2ui.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <ProgramDatabaseFile>$(OutDir)openrct2-win.pdb</ProgramDatabaseFile>
-      <SubSystem>Console</SubSystem>
+      <SubSystem>Windows</SubSystem>
       <StackReserveSize>8388608</StackReserveSize>
     </Link>
     <Lib>
@@ -69,6 +69,9 @@
       <TargetMachine Condition="'$(Platform)'=='x64'">MachineX64</TargetMachine>
       <TargetMachine Condition="'$(Platform)'=='arm64'">MachineARM64</TargetMachine>
     </Lib>
+    <PostBuildEvent>
+      <Command>copy /Y "$(OutDir)$(TargetName).exe" "$(OutDir)NeXTycoon.exe"</Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ResourceCompile Include="..\..\resources\OpenRCT2.rc" />

@@ -838,19 +838,30 @@ void ScriptEngine::RefreshPlugins()
 
 std::vector<std::string> ScriptEngine::GetPluginFiles() const
 {
-    // Scan for .js files in plugin directory
+    // Scan for supported NeXTycoon plugins (.js, .ts, .lua, .py, .dll)
+    static constexpr const utf8* kPluginExtensions[] = {
+        u8"*.js",
+        u8"*.ts",
+        u8"*.lua",
+        u8"*.py",
+        u8"*.dll",
+    };
+
     std::vector<std::string> pluginFiles;
     auto base = _env.GetDirectoryPath(DirBase::user, DirId::plugins);
     if (Path::DirectoryExists(base))
     {
-        auto pattern = Path::Combine(base, u8"*.js");
-        auto scanner = Path::scanDirectory(pattern, true);
-        while (scanner->next())
+        for (const auto* extPattern : kPluginExtensions)
         {
-            auto path = std::string(scanner->getPath());
-            if (ShouldLoadScript(path))
+            auto pattern = Path::Combine(base, extPattern);
+            auto scanner = Path::scanDirectory(pattern, true);
+            while (scanner->next())
             {
-                pluginFiles.push_back(path);
+                auto path = std::string(scanner->getPath());
+                if (ShouldLoadScript(path) && std::find(pluginFiles.begin(), pluginFiles.end(), path) == pluginFiles.end())
+                {
+                    pluginFiles.push_back(path);
+                }
             }
         }
     }
