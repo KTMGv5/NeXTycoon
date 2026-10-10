@@ -110,3 +110,47 @@ TEST(MultiLanguagePluginTests, NativePluginApiFunctionTable)
     EXPECT_EQ(plugin.GetMetadata().MinApiVersion, NEXTYCOON_API_VERSION);
     EXPECT_FALSE(plugin.IsTransient());
 }
+
+TEST(MultiLanguagePluginTests, NeXTycoonWallStreetNativeDllLoadsAndExecutes)
+{
+    getGameState().park.name = "Wall Street Wonderland";
+    getGameState().park.rating = 850;
+    getGameState().park.cash = 250000;
+    getGameState().park.numGuestsInPark = 650;
+    getGameState().park.value = 180000;
+    getGameState().park.companyValue = 430000;
+
+    Plugin plugin("plugins/NeXTycoonWallStreet.dll");
+    EXPECT_EQ(plugin.GetLanguage(), PluginLanguage::nativeLib);
+
+    // If the compiled DLL is present in plugins/, verify full dynamic lifecycle
+    try
+    {
+        plugin.Load();
+        EXPECT_TRUE(plugin.IsLoaded());
+
+        EXPECT_EQ(plugin.GetMetadata().Name, "NeXTycoon Wall Street & Stock Exchange");
+        EXPECT_EQ(plugin.GetMetadata().Version, "1.0.0");
+        ASSERT_FALSE(plugin.GetMetadata().Authors.empty());
+        EXPECT_EQ(plugin.GetMetadata().Authors[0], "NeXTycoon High-Frequency Trading Lab");
+        EXPECT_FALSE(plugin.IsTransient());
+
+        EXPECT_NO_THROW(plugin.Start());
+        EXPECT_TRUE(plugin.HasStarted());
+
+        // Run multiple ticks of market simulation
+        for (int i = 0; i < 5; i++)
+        {
+            EXPECT_NO_THROW(plugin.Update());
+        }
+
+        plugin.Unload();
+        EXPECT_FALSE(plugin.IsLoaded());
+    }
+    catch (const std::exception& ex)
+    {
+        // Fail if file exists but crashed on load
+        FAIL() << "Failed to load/execute NeXTycoonWallStreet.dll: " << ex.what();
+    }
+}
+

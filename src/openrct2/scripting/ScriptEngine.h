@@ -286,6 +286,7 @@ namespace OpenRCT2::Scripting
         void UnregisterPlugin(std::string_view path);
         void RegisterPlugin(std::string_view path);
         void CheckAndStartPlugins();
+        void UpdatePlugins();
         void StartIntransientPlugins();
         void StartTransientPlugins();
         void LoadPlugin(const std::string& path);

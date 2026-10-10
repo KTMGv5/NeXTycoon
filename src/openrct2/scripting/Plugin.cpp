@@ -253,6 +253,14 @@ void Plugin::Start()
     JS_FreeValue(_context, res);
 }
 
+void Plugin::Update()
+{
+    if (_nativeRuntime != nullptr && _hasStarted)
+    {
+        _nativeRuntime->Update();
+    }
+}
+
 void Plugin::StopBegin()
 {
     _isStopping = true;

@@ -150,6 +150,7 @@ namespace OpenRCT2::Scripting
         void SetCode(std::string_view code);
         void Load();
         void Start();
+        void Update();
         void StopBegin();
         void StopEnd();
 

@@ -848,19 +848,26 @@ std::vector<std::string> ScriptEngine::GetPluginFiles() const
     };
 
     std::vector<std::string> pluginFiles;
-    auto base = _env.GetDirectoryPath(DirBase::user, DirId::plugins);
-    if (Path::DirectoryExists(base))
+    const std::vector<std::string> searchBases = {
+        _env.GetDirectoryPath(DirBase::user, DirId::plugins),
+        _env.GetDirectoryPath(DirBase::openrct2, DirId::plugins),
+    };
+
+    for (const auto& base : searchBases)
     {
-        for (const auto* extPattern : kPluginExtensions)
+        if (Path::DirectoryExists(base))
         {
-            auto pattern = Path::Combine(base, extPattern);
-            auto scanner = Path::scanDirectory(pattern, true);
-            while (scanner->next())
+            for (const auto* extPattern : kPluginExtensions)
             {
-                auto path = std::string(scanner->getPath());
-                if (ShouldLoadScript(path) && std::find(pluginFiles.begin(), pluginFiles.end(), path) == pluginFiles.end())
+                auto pattern = Path::Combine(base, extPattern);
+                auto scanner = Path::scanDirectory(pattern, true);
+                while (scanner->next())
                 {
-                    pluginFiles.push_back(path);
+                    auto path = std::string(scanner->getPath());
+                    if (ShouldLoadScript(path) && std::find(pluginFiles.begin(), pluginFiles.end(), path) == pluginFiles.end())
+                    {
+                        pluginFiles.push_back(path);
+                    }
                 }
             }
         }
@@ -1216,10 +1223,22 @@ void ScriptEngine::Tick()
     }
 
     CheckAndStartPlugins();
+    UpdatePlugins();
     UpdateIntervals();
     UpdateSockets();
     ProcessREPL();
     DoAutoReloadPluginCheck();
+}
+
+void ScriptEngine::UpdatePlugins()
+{
+    for (const auto& plugin : _plugins)
+    {
+        if (plugin != nullptr && plugin->HasStarted())
+        {
+            plugin->Update();
+        }
+    }
 }
 
 void ScriptEngine::CheckAndStartPlugins()

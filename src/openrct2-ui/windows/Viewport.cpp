@@ -70,14 +70,14 @@ namespace OpenRCT2::Ui::Windows
         makeWindowShim(kWindowTitle, kWindowSize),
         makeWidget({      0, 14}, kWindowSize - ScreenSize( 1, 1),  WidgetType::resize,   WindowColour::secondary                                                    ), // resize
         makeWidget({      3, 17}, kWindowSize - ScreenSize(29, 3),  WidgetType::viewport, WindowColour::primary                                                      ), // viewport
-        makeWidget({kWindowSize.width - 25,  17}, kButtonSize,      WidgetType::flatBtn,  WindowColour::primary  , ImageId(SPR_G2_ZOOM_IN),     STR_ZOOM_IN_TIP          ), // zoom in
-        makeWidget({kWindowSize.width - 25,  41}, kButtonSize,      WidgetType::flatBtn,  WindowColour::primary  , ImageId(SPR_G2_ZOOM_OUT),    STR_ZOOM_OUT_TIP         ), // zoom out
-        makeWidget({kWindowSize.width - 25,  65}, kButtonSize,      WidgetType::flatBtn,  WindowColour::primary  , ImageId(SPR_LOCATE),         STR_LOCATE_SUBJECT_TIP   ), // locate
-        makeWidget({kWindowSize.width - 25,  89}, kButtonSize,      WidgetType::flatBtn,  WindowColour::primary  , ImageId(SPR_ROTATE_ARROW),   STR_LOCATE_SUBJECT_TIP   ), // rotate
-        makeWidget({kWindowSize.width - 25, 113}, kButtonSize,      WidgetType::flatBtn,  WindowColour::primary  , ImageId(SPR_NEXT),           STR_COASTER_CAM_NEXT_RIDE_TIP ), // next ride
-        makeWidget({kWindowSize.width - 25, 137}, kButtonSize,      WidgetType::flatBtn,  WindowColour::primary  , ImageId(SPR_RIDE),           STR_COASTER_CAM_NEXT_TRAIN_TIP), // next train
-        makeWidget({kWindowSize.width - 25, 161}, kButtonSize,      WidgetType::flatBtn,  WindowColour::primary  , ImageId(SPR_TRACK_PEEP),     STR_COASTER_CAM_HUD_TIP  ), // toggle HUD
-        makeWidget({kWindowSize.width - 25, 185}, kButtonSize,      WidgetType::flatBtn,  WindowColour::primary  , ImageId(SPR_TAB),            STR_COASTER_CAM_PIP_TIP  )  // toggle PIP dock
+        makeWidget({kWindowSize.width - 26,  17}, kButtonSize,      WidgetType::flatBtn,  WindowColour::primary  , ImageId(SPR_G2_ZOOM_IN),     STR_ZOOM_IN_TIP          ), // zoom in
+        makeWidget({kWindowSize.width - 26,  41}, kButtonSize,      WidgetType::flatBtn,  WindowColour::primary  , ImageId(SPR_G2_ZOOM_OUT),    STR_ZOOM_OUT_TIP         ), // zoom out
+        makeWidget({kWindowSize.width - 26,  65}, kButtonSize,      WidgetType::flatBtn,  WindowColour::primary  , ImageId(SPR_LOCATE),         STR_LOCATE_SUBJECT_TIP   ), // locate
+        makeWidget({kWindowSize.width - 26,  89}, kButtonSize,      WidgetType::flatBtn,  WindowColour::primary  , ImageId(SPR_ROTATE_ARROW),   STR_LOCATE_SUBJECT_TIP   ), // rotate
+        makeWidget({kWindowSize.width - 26, 113}, kButtonSize,      WidgetType::flatBtn,  WindowColour::primary  , ImageId(SPR_NEXT),           STR_COASTER_CAM_NEXT_RIDE_TIP ), // next ride
+        makeWidget({kWindowSize.width - 26, 137}, kButtonSize,      WidgetType::flatBtn,  WindowColour::primary  , ImageId(SPR_RIDE),           STR_COASTER_CAM_NEXT_TRAIN_TIP), // next train
+        makeWidget({kWindowSize.width - 26, 161}, kButtonSize,      WidgetType::flatBtn,  WindowColour::primary  , ImageId(SPR_TRACK_PEEP),     STR_COASTER_CAM_HUD_TIP  ), // toggle HUD
+        makeWidget({kWindowSize.width - 26, 185}, kButtonSize,      WidgetType::flatBtn,  WindowColour::primary  , ImageId(SPR_G2_ARROW_DOWN),  STR_COASTER_CAM_PIP_TIP  )  // toggle PIP dock
     );
     // clang-format on
 
@@ -220,6 +220,10 @@ namespace OpenRCT2::Ui::Windows
 
         void TogglePIPDock()
         {
+            // Fully invalidate old position on screen before changing geometry
+            invalidate();
+            GfxInvalidateScreen();
+
             if (!_isPIPDocked)
             {
                 _undockedPos = windowPos;
@@ -228,27 +232,48 @@ namespace OpenRCT2::Ui::Windows
                 int32_t screenW = ContextGetWidth();
                 int32_t screenH = ContextGetHeight();
 
-                int32_t pipW = 320;
-                int32_t pipH = 240;
+                int32_t pipW = std::clamp(screenW / 4, 320, 480);
+                int32_t pipH = std::clamp(screenH / 4, 240, 360);
                 int32_t pipX = std::max(0, screenW - pipW - 12);
                 int32_t pipY = std::max(0, screenH - pipH - 38);
 
-                windowPos = { pipX, pipY };
-                width = pipW;
-                height = pipH;
+                windowPos = { static_cast<int16_t>(pipX), static_cast<int16_t>(pipY) };
+                width = static_cast<int16_t>(pipW);
+                height = static_cast<int16_t>(pipH);
                 _isPIPDocked = true;
             }
             else
             {
-                if (_undockedSize.width > 0 && _undockedSize.height > 0)
+                if (_undockedSize.width >= 260 && _undockedSize.height >= 232)
                 {
                     windowPos = _undockedPos;
                     width = _undockedSize.width;
                     height = _undockedSize.height;
                 }
+                else
+                {
+                    windowPos = { 100, 100 };
+                    width = 360;
+                    height = 260;
+                }
                 _isPIPDocked = false;
             }
+
+            onResize();
+            resizeFrame();
+            onPrepareDraw();
+
+            if (viewport != nullptr)
+            {
+                Widget* viewportWidget = &widgets[WIDX_VIEWPORT];
+                viewport->pos = windowPos + ScreenCoordsXY{ viewportWidget->left + 1, viewportWidget->top + 1 };
+                viewport->width = widgets[WIDX_VIEWPORT].width() - 2;
+                viewport->height = widgets[WIDX_VIEWPORT].height() - 2;
+            }
+
+            // Invalidate new window rect and refresh screen
             invalidate();
+            GfxInvalidateScreen();
         }
 
         void onOpen() override
@@ -277,7 +302,7 @@ namespace OpenRCT2::Ui::Windows
 
             viewport->flags.set(ViewportFlag::soundOn, ViewportFlag::independentRotation);
 
-            WindowSetResize(*this, { 220, 180 }, { (ContextGetWidth() * 4) / 5, (ContextGetHeight() * 4) / 5 });
+            WindowSetResize(*this, { 260, 232 }, { (ContextGetWidth() * 4) / 5, (ContextGetHeight() * 4) / 5 });
 
             // Automatically lock onto first ride in park if available
             TrackNextRide();
@@ -562,31 +587,33 @@ namespace OpenRCT2::Ui::Windows
             maxWidth = (screenWidth * 4) / 5;
             maxHeight = (screenHeight * 4) / 5;
 
-            minWidth = 220;
-            minHeight = 180;
+            minWidth = 260;
+            minHeight = 232;
 
             WindowSetResize(*this, { minWidth, minHeight }, { maxWidth, maxHeight });
         }
 
         void onPrepareDraw() override
         {
-            widgets[WIDX_ZOOM_IN].left = width - 27;
-            widgets[WIDX_ZOOM_IN].right = width - 2;
-            widgets[WIDX_ZOOM_OUT].left = width - 27;
-            widgets[WIDX_ZOOM_OUT].right = width - 2;
-            widgets[WIDX_LOCATE].left = width - 27;
-            widgets[WIDX_LOCATE].right = width - 2;
-            widgets[WIDX_ROTATE].left = width - 27;
-            widgets[WIDX_ROTATE].right = width - 2;
+            widgets[WIDX_ZOOM_IN].left = width - 26;
+            widgets[WIDX_ZOOM_IN].right = width - 3;
+            widgets[WIDX_ZOOM_OUT].left = width - 26;
+            widgets[WIDX_ZOOM_OUT].right = width - 3;
+            widgets[WIDX_LOCATE].left = width - 26;
+            widgets[WIDX_LOCATE].right = width - 3;
+            widgets[WIDX_ROTATE].left = width - 26;
+            widgets[WIDX_ROTATE].right = width - 3;
 
-            widgets[WIDX_NEXT_RIDE].left = width - 27;
-            widgets[WIDX_NEXT_RIDE].right = width - 2;
-            widgets[WIDX_NEXT_TRAIN].left = width - 27;
-            widgets[WIDX_NEXT_TRAIN].right = width - 2;
-            widgets[WIDX_TOGGLE_HUD].left = width - 27;
-            widgets[WIDX_TOGGLE_HUD].right = width - 2;
-            widgets[WIDX_PIP_DOCK].left = width - 27;
-            widgets[WIDX_PIP_DOCK].right = width - 2;
+            widgets[WIDX_NEXT_RIDE].left = width - 26;
+            widgets[WIDX_NEXT_RIDE].right = width - 3;
+            widgets[WIDX_NEXT_TRAIN].left = width - 26;
+            widgets[WIDX_NEXT_TRAIN].right = width - 3;
+            widgets[WIDX_TOGGLE_HUD].left = width - 26;
+            widgets[WIDX_TOGGLE_HUD].right = width - 3;
+            widgets[WIDX_PIP_DOCK].left = width - 26;
+            widgets[WIDX_PIP_DOCK].right = width - 3;
+
+            widgets[WIDX_PIP_DOCK].image = _isPIPDocked ? ImageId(SPR_G2_ARROW_UP) : ImageId(SPR_G2_ARROW_DOWN);
 
             widgets[WIDX_CONTENT_PANEL].right = width - 1;
             widgets[WIDX_CONTENT_PANEL].bottom = height - 1;
@@ -623,6 +650,12 @@ namespace OpenRCT2::Ui::Windows
                 viewport->width = widgets[WIDX_VIEWPORT].width() - 2;
                 viewport->height = widgets[WIDX_VIEWPORT].height() - 2;
             }
+        }
+
+        void onClose() override
+        {
+            invalidate();
+            GfxInvalidateScreen();
         }
 
         void onMoved([[maybe_unused]] const ScreenCoordsXY& screenCoords) override

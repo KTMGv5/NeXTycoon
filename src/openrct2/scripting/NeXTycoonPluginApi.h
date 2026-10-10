@@ -15,7 +15,7 @@
 extern "C" {
 #endif
 
-#define NEXTYCOON_API_VERSION 124
+#define NEXTYCOON_API_VERSION 125
 
 enum NxPluginType
 {
@@ -56,6 +56,13 @@ typedef struct NxApi
 
     // Hooks / Event subscription
     void (*register_hook)(const char* hook_name, void (*callback)(void* data));
+
+    // NeXTycoon v1.0.1 High-Level Extensions
+    int64_t (*get_park_value)(void);
+    int64_t (*get_company_value)(void);
+    int32_t (*get_ride_count)(void);
+    void (*post_news)(int32_t type, const char* text);
+    void (*grant_park_bonus)(int64_t amount, const char* reason);
 } NxApi;
 
 // Function signatures exported by NeXTycoon native plugins (.dll / .so)

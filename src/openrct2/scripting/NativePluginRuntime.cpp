@@ -22,6 +22,8 @@
 #include "../GameState.h"
 #include "../Version.h"
 #include "../core/Console.hpp"
+#include "../management/NewsItem.h"
+#include "../ride/RideManager.hpp"
 #include "../windows/Intent.h"
 #include "../world/Park.h"
 
@@ -107,6 +109,51 @@ namespace OpenRCT2::Scripting
         }
     }
 
+    static int64_t NativeGetParkValue(void)
+    {
+        return static_cast<int64_t>(getGameState().park.value);
+    }
+
+    static int64_t NativeGetCompanyValue(void)
+    {
+        return static_cast<int64_t>(getGameState().park.companyValue);
+    }
+
+    static int32_t NativeGetRideCount(void)
+    {
+        return static_cast<int32_t>(RideManager(getGameState()).size());
+    }
+
+    static void NativePostNews(int32_t type, const char* text)
+    {
+        if (text != nullptr && text[0] != '\0')
+        {
+            News::ItemType itemType = News::ItemType::blank;
+            if (type == 1)
+                itemType = News::ItemType::money;
+            else if (type == 2)
+                itemType = News::ItemType::award;
+            else if (type == 3)
+                itemType = News::ItemType::graph;
+            News::AddItemToQueue(getGameState().park.newsItems, itemType, text, 0);
+        }
+    }
+
+    static void NativeGrantParkBonus(int64_t amount, const char* reason)
+    {
+        getGameState().park.cash += static_cast<money64>(amount);
+        if (GetContext() != nullptr)
+        {
+            auto intent = Intent(INTENT_ACTION_UPDATE_CASH);
+            ContextBroadcastIntent(&intent);
+        }
+        if (reason != nullptr && reason[0] != '\0')
+        {
+            std::string msg = "{GREEN}WALL STREET BONUS: {WHITE}" + std::string(reason);
+            News::AddItemToQueue(getGameState().park.newsItems, News::ItemType::money, msg.c_str(), 0);
+        }
+    }
+
     NativePluginRuntime::NativePluginRuntime(Plugin* owner)
         : _owner(owner)
     {
@@ -134,6 +181,11 @@ namespace OpenRCT2::Scripting
         _api.is_game_paused = NativeIsGamePaused;
         _api.get_game_version = NativeGetGameVersion;
         _api.register_hook = NativeRegisterHook;
+        _api.get_park_value = NativeGetParkValue;
+        _api.get_company_value = NativeGetCompanyValue;
+        _api.get_ride_count = NativeGetRideCount;
+        _api.post_news = NativePostNews;
+        _api.grant_park_bonus = NativeGrantParkBonus;
     }
 
     bool NativePluginRuntime::Load(std::string_view path, std::string& outError)
