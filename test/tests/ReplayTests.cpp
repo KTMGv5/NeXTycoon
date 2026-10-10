@@ -67,6 +67,8 @@ class ReplayTests : public testing::TestWithParam<ReplayTestData>
 protected:
 };
 
+GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(ReplayTests);
+
 TEST_P(ReplayTests, RunReplay)
 {
     gOpenRCT2Headless = true;

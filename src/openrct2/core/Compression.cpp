@@ -242,16 +242,17 @@ namespace OpenRCT2::Compression
         const size_t outBufferSize = ZSTD_DStreamOutSize();
         std::vector<uint8_t> outBuffer(outBufferSize);
         uint64_t totalDecompressed = 0;
+        size_t ret = 0;
 
         while (sourceBuf)
         {
-            auto readBlock = sourceBuf.ReadBlock(source);
+            auto readBlock = sourceBuf.ReadBlock(source, ZSTD_DStreamInSize());
             ZSTD_inBuffer input = { readBlock.first, readBlock.second, 0 };
 
             while (input.pos < input.size)
             {
                 ZSTD_outBuffer output = { outBuffer.data(), outBufferSize, 0 };
-                size_t ret = ZSTD_decompressStream(ctx.get(), &output, &input);
+                ret = ZSTD_decompressStream(ctx.get(), &output, &input);
                 if (ZSTD_isError(ret))
                 {
                     LOG_ERROR("Failed to decompress data with error: %s", ZSTD_getErrorName(ret));
@@ -260,15 +261,19 @@ namespace OpenRCT2::Compression
 
                 if (output.pos > 0)
                 {
+                    if (decompressLength != 0 && totalDecompressed + output.pos > decompressLength)
+                    {
+                        LOG_ERROR("Decompressed data larger than expected");
+                        return false;
+                    }
                     dest.Write(outBuffer.data(), output.pos);
                     totalDecompressed += output.pos;
                 }
             }
         }
 
-        // Flush any remaining data from the decoder
-        size_t ret = 0;
-        do
+        // Drain any remaining output buffered in the decoder
+        while (ret > 0)
         {
             ZSTD_inBuffer emptyInput = { nullptr, 0, 0 };
             ZSTD_outBuffer output = { outBuffer.data(), outBufferSize, 0 };
@@ -278,19 +283,28 @@ namespace OpenRCT2::Compression
                 LOG_ERROR("Failed to decompress data during flush: %s", ZSTD_getErrorName(ret));
                 return false;
             }
-            if (output.pos > 0)
+            if (output.pos == 0)
             {
-                dest.Write(outBuffer.data(), output.pos);
-                totalDecompressed += output.pos;
+                break;
             }
-        } while (ret > 0);
+            if (decompressLength != 0 && totalDecompressed + output.pos > decompressLength)
+            {
+                LOG_ERROR("Decompressed data larger than expected");
+                return false;
+            }
+            dest.Write(outBuffer.data(), output.pos);
+            totalDecompressed += output.pos;
+        }
 
         if (decompressLength != 0 && totalDecompressed != decompressLength)
         {
-            LOG_WARNING("Decompressed size (%" PRIu64 ") differs from expected (%" PRIu64 ")", totalDecompressed, decompressLength);
+            LOG_ERROR(
+                "Decompressed data size mismatch (%" PRIu64 " vs expected %" PRIu64 ")",
+                totalDecompressed,
+                decompressLength);
+            return false;
         }
 
-        dest.SetPosition(0);
         return true;
     }
 } // namespace OpenRCT2::Compression

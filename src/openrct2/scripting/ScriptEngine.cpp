@@ -489,7 +489,7 @@ void ScriptEngine::Initialise()
         JS_SetDumpFlags(_runtime, JS_DUMP_LEAKS);
     #endif
     }
-
+    JS_UpdateStackTop(_runtime);
     JS_SetMaxStackSize(_runtime, kJsStackSize);
 
     _replContext = JS_NewContext(_runtime);
@@ -1187,6 +1187,8 @@ void ScriptEngine::Tick()
         return;
     }
 
+    JS_UpdateStackTop(_runtime);
+
     PROFILED_FUNCTION();
 
     JSContext* jobCtx;
@@ -1248,6 +1250,7 @@ void ScriptEngine::ProcessREPL()
         auto promise = std::move(std::get<0>(item));
         auto command = std::move(std::get<1>(item));
 
+        JS_UpdateStackTop(_runtime);
         JSValue res = JS_Eval(_replContext, command.c_str(), command.length(), "<repl>", JS_EVAL_TYPE_GLOBAL);
         if (JS_IsException(res))
         {
@@ -1291,6 +1294,7 @@ JSValue ScriptEngine::ExecutePluginCall(
     JSContext* ctx = plugin ? plugin->GetContext() : _replContext;
     if (JS_IsFunction(ctx, func) && (!plugin || plugin->HasStarted()))
     {
+        JS_UpdateStackTop(JS_GetRuntime(ctx));
         ScriptExecutionInfo::PluginScope scope(_execInfo, plugin, isGameStateMutable);
 
         // The call can free itself (by closing windows/clearing timers etc.) so we need to dup the values to keep them alive

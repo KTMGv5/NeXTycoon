@@ -27,7 +27,89 @@
 #include <string>
 #include <vector>
 
+#include <fcntl.h>
+#include <io.h>
+
 static std::vector<std::string> GetCommandLineArgs(int argc, wchar_t** argvW);
+
+static void SetupConsoleAndRedirection()
+{
+    HANDLE hStdOut = GetStdHandle(STD_OUTPUT_HANDLE);
+    HANDLE hStdErr = GetStdHandle(STD_ERROR_HANDLE);
+    HANDLE hStdIn = GetStdHandle(STD_INPUT_HANDLE);
+
+    auto isRedirected = [](HANDLE h) {
+        if (h == NULL || h == INVALID_HANDLE_VALUE)
+            return false;
+        DWORD fileType = GetFileType(h);
+        return (fileType == FILE_TYPE_DISK || fileType == FILE_TYPE_PIPE);
+    };
+
+    bool stdOutRedirected = isRedirected(hStdOut);
+    bool stdErrRedirected = isRedirected(hStdErr);
+    bool stdInRedirected = isRedirected(hStdIn);
+
+    if (stdOutRedirected)
+    {
+        int fd = _open_osfhandle(reinterpret_cast<intptr_t>(hStdOut), _O_TEXT);
+        if (fd != -1)
+        {
+            FILE* fp = _fdopen(fd, "w");
+            if (fp != nullptr)
+            {
+                *stdout = *fp;
+                setvbuf(stdout, nullptr, _IONBF, 0);
+            }
+        }
+    }
+    if (stdErrRedirected)
+    {
+        int fd = _open_osfhandle(reinterpret_cast<intptr_t>(hStdErr), _O_TEXT);
+        if (fd != -1)
+        {
+            FILE* fp = _fdopen(fd, "w");
+            if (fp != nullptr)
+            {
+                *stderr = *fp;
+                setvbuf(stderr, nullptr, _IONBF, 0);
+            }
+        }
+    }
+    if (stdInRedirected)
+    {
+        int fd = _open_osfhandle(reinterpret_cast<intptr_t>(hStdIn), _O_TEXT);
+        if (fd != -1)
+        {
+            FILE* fp = _fdopen(fd, "r");
+            if (fp != nullptr)
+            {
+                *stdin = *fp;
+            }
+        }
+    }
+
+    if (!stdOutRedirected || !stdErrRedirected || !stdInRedirected)
+    {
+        if (AttachConsole(ATTACH_PARENT_PROCESS))
+        {
+            FILE* fp;
+            if (!stdOutRedirected)
+            {
+                freopen_s(&fp, "CONOUT$", "w", stdout);
+                setvbuf(stdout, nullptr, _IONBF, 0);
+            }
+            if (!stdErrRedirected)
+            {
+                freopen_s(&fp, "CONOUT$", "w", stderr);
+                setvbuf(stderr, nullptr, _IONBF, 0);
+            }
+            if (!stdInRedirected)
+            {
+                freopen_s(&fp, "CONIN$", "r", stdin);
+            }
+        }
+    }
+}
 
 /**
  * Windows GUI entry point for NeXTycoon (no console pop-up when launched).
@@ -38,14 +120,7 @@ int WINAPI wWinMain(
     [[maybe_unused]] PWSTR pCmdLine,
     [[maybe_unused]] int nCmdShow)
 {
-    // If launched from an existing terminal, attach to parent console so output is still readable
-    if (AttachConsole(ATTACH_PARENT_PROCESS))
-    {
-        FILE* fp;
-        freopen_s(&fp, "CONOUT$", "w", stdout);
-        freopen_s(&fp, "CONOUT$", "w", stderr);
-        freopen_s(&fp, "CONIN$", "r", stdin);
-    }
+    SetupConsoleAndRedirection();
 
     int argc = __argc;
     wchar_t** argvW = __wargv;
@@ -60,7 +135,10 @@ int WINAPI wWinMain(
 
     // Ensure that argv[argc] == nullptr, as mandated by the standard
     argv.push_back(nullptr);
-    return NormalisedMain(argc, argv.data());
+    int result = NormalisedMain(argc, argv.data());
+    fflush(stdout);
+    fflush(stderr);
+    return result;
 }
 
 /**

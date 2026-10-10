@@ -10,6 +10,8 @@
 #ifdef ENABLE_SCRIPTING
 
     #include "Plugin.h"
+    #include "LuaPluginRuntime.h"
+    #include "NativePluginRuntime.h"
 
     #include "../Context.h"
     #include "../Diagnostic.h"
@@ -19,6 +21,13 @@
     #include "ScriptEngine.h"
 
 using namespace OpenRCT2::Scripting;
+
+Plugin::Plugin() = default;
+
+Plugin::~Plugin()
+{
+    Unload();
+}
 
 Plugin::Plugin(std::string_view path)
     : _path(path)
@@ -124,12 +133,36 @@ void Plugin::Load()
         _context = nullptr;
     }
 
-    if (!_path.empty())
+    if (_code.empty() && !_path.empty() && _language != PluginLanguage::nativeLib)
     {
         LoadCodeFromFile();
     }
 
-    if (_language != PluginLanguage::javascript && _language != PluginLanguage::typescript)
+    if (_language == PluginLanguage::lua)
+    {
+        _luaRuntime = std::make_unique<LuaPluginRuntime>(this);
+        std::string err;
+        if (!_luaRuntime->LoadScript(_code, _path, err))
+        {
+            _luaRuntime.reset();
+            throw std::runtime_error("Failed to load Lua plug-in script: " + _path + "\n" + err);
+        }
+        _hasLoaded = true;
+        return;
+    }
+    else if (_language == PluginLanguage::nativeLib)
+    {
+        _nativeRuntime = std::make_unique<NativePluginRuntime>(this);
+        std::string err;
+        if (!_nativeRuntime->Load(_path, err))
+        {
+            _nativeRuntime.reset();
+            throw std::runtime_error("Failed to load native plug-in library: " + _path + "\n" + err);
+        }
+        _hasLoaded = true;
+        return;
+    }
+    else if (_language == PluginLanguage::python)
     {
         LoadNonJsMetadata();
         _hasLoaded = true;
@@ -145,6 +178,7 @@ void Plugin::Load()
     JS_SetPropertyStr(_context, glb, "registerPlugin", registerFunc);
     JS_FreeValue(_context, glb);
 
+    JS_UpdateStackTop(JS_GetRuntime(_context));
     JSValue res = JS_Eval(_context, _code.c_str(), _code.length(), _path.c_str(), JS_EVAL_TYPE_GLOBAL);
     if (JS_IsException(res))
     {
@@ -167,7 +201,33 @@ void Plugin::Start()
         throw std::runtime_error("Plugin has not been loaded.");
     }
 
-    if (_language != PluginLanguage::javascript && _language != PluginLanguage::typescript)
+    if (_language == PluginLanguage::lua)
+    {
+        _hasStarted = true;
+        if (_luaRuntime)
+        {
+            std::string err;
+            if (!_luaRuntime->Start(err))
+            {
+                throw std::runtime_error("[" + _metadata.Name + "]\n" + err);
+            }
+        }
+        return;
+    }
+    else if (_language == PluginLanguage::nativeLib)
+    {
+        _hasStarted = true;
+        if (_nativeRuntime)
+        {
+            std::string err;
+            if (!_nativeRuntime->Start(err))
+            {
+                throw std::runtime_error("[" + _metadata.Name + "]\n" + err);
+            }
+        }
+        return;
+    }
+    else if (_language == PluginLanguage::python)
     {
         _hasStarted = true;
         return;
@@ -206,7 +266,27 @@ void Plugin::StopEnd()
 
 void Plugin::Unload()
 {
-    if (_language != PluginLanguage::javascript && _language != PluginLanguage::typescript)
+    if (_language == PluginLanguage::lua)
+    {
+        if (_luaRuntime)
+        {
+            _luaRuntime->Stop();
+            _luaRuntime.reset();
+        }
+        _hasLoaded = false;
+        return;
+    }
+    else if (_language == PluginLanguage::nativeLib)
+    {
+        if (_nativeRuntime)
+        {
+            _nativeRuntime->Stop();
+            _nativeRuntime.reset();
+        }
+        _hasLoaded = false;
+        return;
+    }
+    else if (_language == PluginLanguage::python)
     {
         _hasLoaded = false;
         return;
@@ -214,7 +294,7 @@ void Plugin::Unload()
 
     if (!_context)
     {
-        throw std::runtime_error("Plugin is not loaded");
+        return;
     }
 
     JS_FreeContext(_context);
@@ -333,6 +413,28 @@ int32_t Plugin::GetTargetAPIVersion() const
 bool Plugin::IsTransient() const
 {
     return _metadata.Type != PluginType::intransient;
+}
+
+void Plugin::SetLuaMetadata(std::string_view name, std::string_view version, std::string_view author)
+{
+    _metadata.Name = std::string(name);
+    _metadata.Version = std::string(version);
+    _metadata.Authors.clear();
+    _metadata.Authors.push_back(std::string(author));
+    _metadata.Type = PluginType::intransient;
+    _metadata.Language = PluginLanguage::lua;
+}
+
+void Plugin::SetNativeMetadata(
+    std::string_view name, std::string_view version, std::string_view author, int32_t type, int32_t minApiVersion)
+{
+    _metadata.Name = std::string(name);
+    _metadata.Version = std::string(version);
+    _metadata.Authors.clear();
+    _metadata.Authors.push_back(std::string(author));
+    _metadata.Type = static_cast<PluginType>(type);
+    _metadata.MinApiVersion = minApiVersion;
+    _metadata.Language = PluginLanguage::nativeLib;
 }
 
 #endif

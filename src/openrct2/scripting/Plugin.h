@@ -13,6 +13,7 @@
 
     #include "ScriptUtil.hpp"
 
+    #include <memory>
     #include <optional>
     #include <quickjs.h>
     #include <string>
@@ -21,6 +22,9 @@
 
 namespace OpenRCT2::Scripting
 {
+    class LuaPluginRuntime;
+    class NativePluginRuntime;
+
     enum class PluginType
     {
         /**
@@ -70,6 +74,8 @@ namespace OpenRCT2::Scripting
     {
     private:
         JSContext* _context = nullptr;
+        std::unique_ptr<LuaPluginRuntime> _luaRuntime;
+        std::unique_ptr<NativePluginRuntime> _nativeRuntime;
         std::string _path;
         PluginMetadata _metadata{};
         PluginLanguage _language = PluginLanguage::javascript;
@@ -109,6 +115,9 @@ namespace OpenRCT2::Scripting
         }
 
         void SetMetadata(JSValue obj);
+        void SetLuaMetadata(std::string_view name, std::string_view version, std::string_view author);
+        void SetNativeMetadata(
+            std::string_view name, std::string_view version, std::string_view author, int32_t type, int32_t minApiVersion);
 
         const std::string& GetCode() const
         {
@@ -132,8 +141,9 @@ namespace OpenRCT2::Scripting
 
         int32_t GetTargetAPIVersion() const;
 
-        Plugin() = default;
+        Plugin();
         explicit Plugin(std::string_view path);
+        ~Plugin();
         Plugin(const Plugin&) = delete;
         Plugin(Plugin&&) = delete;
 

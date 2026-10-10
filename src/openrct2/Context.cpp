@@ -1749,7 +1749,10 @@ namespace OpenRCT2
     void ContextBroadcastIntent(Intent* intent)
     {
         auto windowManager = GetWindowManager();
-        windowManager->BroadcastIntent(*intent);
+        if (windowManager != nullptr && intent != nullptr)
+        {
+            windowManager->BroadcastIntent(*intent);
+        }
     }
 
     void ContextForceCloseWindowByClass(WindowClass windowClass)

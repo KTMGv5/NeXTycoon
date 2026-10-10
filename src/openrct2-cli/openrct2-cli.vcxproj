@@ -62,6 +62,7 @@
       <AdditionalDependencies>libopenrct2.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <ProgramDatabaseFile>$(OutDir)openrct2-cli.pdb</ProgramDatabaseFile>
       <SubSystem>Console</SubSystem>
+      <StackReserveSize>8388608</StackReserveSize>
     </Link>
     <Lib>
       <TargetMachine Condition="'$(Platform)'=='Win32'">MachineX86</TargetMachine>
