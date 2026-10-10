@@ -191,14 +191,14 @@ namespace OpenRCT2::Ui::Windows
 
             if (plugins.empty())
             {
-                drawLine(18, 68, "No external JavaScript plugins currently loaded in the user directory.");
-                drawLine(18, 92, "NeXTycoon supports hot-reloadable JavaScript & TypeScript plugins (.js, .ts).");
-                drawLine(18, 114, "Plugins can add custom rides, cheats, automated park staff, scenario tools,");
-                drawLine(18, 136, "and multiplayer extensions without modifying game files.");
+                drawLine(18, 68, "No external plugins currently loaded in your plugins directory.");
+                drawLine(18, 92, "NeXTycoon multi-language engine supports JavaScript (.js), TypeScript (.ts),");
+                drawLine(18, 114, "Lua (.lua), and native C-ABI dynamic libraries (.dll) with zero downtime.");
+                drawLine(18, 136, "Plugins can add custom rides, cheats, automated park staff, and extensions.");
                 drawLine(18, 168, "{LIGHTBLUE}How to install plugins:");
                 drawLine(26, 190, "1. Click [Open Plugins Folder] below to open your user plugins directory.");
-                drawLine(26, 210, "2. Drop any OpenRCT2 / NeXTycoon .js plugin script into that folder.");
-                drawLine(26, 230, "3. Click [Reload Plugins] to instantly activate them with zero downtime!");
+                drawLine(26, 210, "2. Drop any .js, .lua, or compiled .dll plugin file into that folder.");
+                drawLine(26, 230, "3. Click [Reload Plugins] to instantly activate them with zero restart!");
             }
             else
             {
@@ -224,27 +224,36 @@ namespace OpenRCT2::Ui::Windows
                         authorStr = " by " + meta.Authors[0];
                     }
 
-                    std::string typeStr;
-                    switch (meta.Type)
+                    std::string langBadge;
+                    switch (plugin->GetLanguage())
                     {
-                        case Scripting::PluginType::local:
-                            typeStr = "[Local]";
+                        case Scripting::PluginLanguage::javascript:
+                            langBadge = "{LIGHTBLUE}[JS]";
                             break;
-                        case Scripting::PluginType::remote:
-                            typeStr = "[Remote]";
+                        case Scripting::PluginLanguage::typescript:
+                            langBadge = "{LIGHTBLUE}[TS]";
                             break;
-                        case Scripting::PluginType::intransient:
-                            typeStr = "[Resident]";
+                        case Scripting::PluginLanguage::lua:
+                            langBadge = "{PURPLE}[Lua]";
+                            break;
+                        case Scripting::PluginLanguage::python:
+                            langBadge = "{YELLOW}[Python]";
+                            break;
+                        case Scripting::PluginLanguage::nativeLib:
+                            langBadge = "{ORANGE}[Native DLL]";
+                            break;
+                        default:
+                            langBadge = "{GREY}[Plugin]";
                             break;
                     }
 
-                    drawLine(20, y, "• " + title + authorStr + "  " + typeStr);
+                    drawLine(20, y, "• " + langBadge + " {BLACK}" + title + authorStr);
                     drawLine(440, y, "{GREEN}[ACTIVE]");
                     y += 24;
                 }
             }
 #else
-            drawLine(18, 68, "{GREY}JavaScript Scripting engine is disabled in this compilation build.");
+            drawLine(18, 68, "{GREY}Scripting engine is disabled in this compilation build.");
 #endif
         }
 
@@ -259,24 +268,29 @@ namespace OpenRCT2::Ui::Windows
             drawLine(32, 102, "{GREY}Full simulation loop, park economics, guest AI, ride mechanics.");
 
             // Core 2
-            drawLine(20, 122, "• RollerCoaster Tycoon 1 Direct Importer");
-            drawLine(360, 122, "{GREEN}[ACTIVE / READY]");
-            drawLine(32, 136, "{GREY}Direct SV4/SC4/CSG loader for original RCT1 parks and scenarios.");
+            drawLine(20, 118, "• Direct3D 11 Hardware Presentation Engine");
+            drawLine(360, 118, "{GREEN}[ACTIVE / D3D11]");
+            drawLine(32, 132, "{GREY}High-performance DirectX 11 pipeline with FL 11_1 and unconstrained FPS.");
 
             // Core 3
-            drawLine(20, 156, "• Locomotion Transport Module Bridge");
-            drawLine(360, 156, "{YELLOW}[STANDBY / BRIDGE]");
-            drawLine(32, 170, "{GREY}Locomotion vehicle specs, track components, and sprite parser bridge.");
+            drawLine(20, 148, "• NeXTycoon Multi-Language Scripting Engine");
+            drawLine(360, 148, "{GREEN}[ACTIVE / LUA+C-ABI]");
+            drawLine(32, 162, "{GREY}Embedded Lua 5.4.7 sandbox, QuickJS runtime, and dynamic native DLL loader.");
 
             // Core 4
-            drawLine(20, 190, "• Direct3D 11 Hardware Presentation Engine");
-            drawLine(360, 190, "{GREEN}[ACTIVE / D3D11]");
-            drawLine(32, 204, "{GREY}High-performance DirectX 11 pipeline with FL 11_1 and unconstrained FPS.");
+            drawLine(20, 178, "• Locomotion Transport Module Bridge");
+            drawLine(360, 178, "{YELLOW}[STANDBY / BRIDGE]");
+            drawLine(32, 192, "{GREY}Locomotion vehicle specs, track components, and sprite parser bridge.");
 
             // Core 5
-            drawLine(20, 224, "• Post-Processing Pixel Shader FX");
-            drawLine(360, 224, "{GREEN}[ACTIVE / SHADERS]");
-            drawLine(32, 238, "{GREY}Crisp Nearest, Bilinear, Vibrant HDR Modern, and Retro CRT Scanlines.");
+            drawLine(20, 208, "• RollerCoaster Tycoon 1 Direct Importer");
+            drawLine(360, 208, "{GREEN}[ACTIVE / READY]");
+            drawLine(32, 222, "{GREY}Direct SV4/SC4/CSG loader for original RCT1 parks and scenarios.");
+
+            // Core 6
+            drawLine(20, 238, "• Post-Processing Pixel Shader FX");
+            drawLine(360, 238, "{GREEN}[ACTIVE / SHADERS]");
+            drawLine(32, 252, "{GREY}Crisp Nearest, Bilinear, Vibrant HDR Modern, and Retro CRT Scanlines.");
         }
 
         void ReloadPlugins()
