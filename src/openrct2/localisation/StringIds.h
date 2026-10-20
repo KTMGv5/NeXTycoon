@@ -1844,6 +1844,7 @@ enum : StringId
     STR_PLUGIN_TAB_MODULES = 7148,
     STR_PLUGIN_TAB_PLUGINS = 7149,
     STR_PLUGIN_STATUS_ACTIVE = 7150,
+    STR_DRAWING_ENGINE_VULKAN = 7151,
 
     // Have to include resource strings (from scenarios and objects) for the time being now that language is partially working
     /* MAX_STR_COUNT = 32768 */ // MAX_STR_COUNT - upper limit for number of strings, not the current count strings

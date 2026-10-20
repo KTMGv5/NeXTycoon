@@ -1,0 +1,197 @@
+name: Build & Release NeXTycoon Multi-Platform
+
+on:
+  push:
+    branches: [ main, master ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    name: Windows (${{ matrix.platform }})
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        platform: [x64, Win32]
+        include:
+          - platform: x64
+            pkg_name: windows-x64
+          - platform: Win32
+            pkg_name: windows-x86
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Build NeXTycoon Release
+        run: |
+          msbuild openrct2.sln /p:Configuration=Release /p:Platform=${{ matrix.platform }} /m /v:m
+
+      - name: Package Windows Artifacts
+        shell: pwsh
+        run: |
+          $pkgDir = "NeXTycoon-v1.1.0-${{ matrix.pkg_name }}"
+          New-Item -ItemType Directory -Path $pkgDir
+          Copy-Item -Path "bin\openrct2.exe" -Destination $pkgDir\
+          Copy-Item -Path "bin\openrct2-cli.exe" -Destination $pkgDir\
+          Copy-Item -Path "bin\*.dll" -Destination $pkgDir\ -ErrorAction SilentlyContinue
+          Copy-Item -Path "data" -Destination $pkgDir\ -Recurse
+          if (Test-Path "bin\plugins") {
+              Copy-Item -Path "bin\plugins" -Destination $pkgDir\ -Recurse
+          }
+          Copy-Item -Path "readme.md" -Destination $pkgDir\
+          Copy-Item -Path "contributors.md" -Destination $pkgDir\
+          Copy-Item -Path "licence.txt" -Destination $pkgDir\
+          Compress-Archive -Path $pkgDir -DestinationPath "$pkgDir.zip"
+
+      - name: Upload Windows Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: NeXTycoon-v1.1.0-${{ matrix.pkg_name }}
+          path: NeXTycoon-v1.1.0-${{ matrix.pkg_name }}.zip
+
+  build-linux:
+    name: Linux (x86_64)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Linux Build Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            cmake \
+            ninja-build \
+            libsdl2-dev \
+            libvulkan-dev \
+            libcurl4-openssl-dev \
+            libspeexdsp-dev \
+            libfontconfig1-dev \
+            libfreetype6-dev \
+            libpng-dev \
+            libzip-dev \
+            libssl-dev \
+            zlib1g-dev \
+            libflac-dev \
+            libvorbis-dev \
+            libicu-dev \
+            libgl1-mesa-dev
+
+      - name: Configure CMake
+        run: |
+          cmake -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DDISABLE_DISCORD=ON \
+            -DSTATIC=ON
+
+      - name: Build NeXTycoon Linux
+        run: |
+          ninja -C build
+
+      - name: Package Linux Binary Tarball
+        run: |
+          PKG_NAME="NeXTycoon-v1.1.0-linux-x86_64"
+          mkdir -p "$PKG_NAME"
+          cp build/openrct2 "$PKG_NAME/"
+          cp build/openrct2-cli "$PKG_NAME/"
+          cp -r data "$PKG_NAME/"
+          cp readme.md contributors.md licence.txt "$PKG_NAME/"
+          tar -czvf "$PKG_NAME.tar.gz" "$PKG_NAME"
+
+      - name: Upload Linux Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: NeXTycoon-v1.1.0-linux-x86_64
+          path: NeXTycoon-v1.1.0-linux-x86_64.tar.gz
+
+  build-macos:
+    name: macOS (Universal / Apple Silicon & Intel)
+    runs-on: macos-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install macOS Dependencies
+        run: |
+          brew install cmake ninja sdl2 libpng freetype fontconfig speexdsp libzip flac libvorbis icu4c openssl molten-vk
+
+      - name: Configure CMake
+        run: |
+          cmake -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DDISABLE_DISCORD=ON \
+            -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" \
+            -DOPENSSL_ROOT_DIR="$(brew --prefix openssl)" \
+            -DICU_ROOT="$(brew --prefix icu4c)"
+
+      - name: Build NeXTycoon macOS
+        run: |
+          ninja -C build
+
+      - name: Package macOS App Bundle
+        run: |
+          PKG_NAME="NeXTycoon-v1.1.0-macos-universal"
+          mkdir -p "$PKG_NAME"
+          if [ -d "build/OpenRCT2.app" ]; then
+            cp -r "build/OpenRCT2.app" "$PKG_NAME/NeXTycoon.app"
+          else
+            cp build/openrct2 "$PKG_NAME/"
+            cp build/openrct2-cli "$PKG_NAME/"
+            cp -r data "$PKG_NAME/"
+          fi
+          cp readme.md contributors.md licence.txt "$PKG_NAME/"
+          zip -r "$PKG_NAME.zip" "$PKG_NAME"
+
+      - name: Upload macOS Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: NeXTycoon-v1.1.0-macos-universal
+          path: NeXTycoon-v1.1.0-macos-universal.zip
+
+  publish-release:
+    name: Publish GitHub Release
+    needs: [build-windows, build-linux, build-macos]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main'
+    steps:
+      - name: Download All Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+
+      - name: Create or Update GitHub Release
+        uses: softprops/action-gh-release@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: NeXTycoon ${{ github.ref_name }} - Multi-Platform Cross-Engine Release
+          body: |
+            ## NeXTycoon Multi-Platform Release (${{ github.ref_name }})
+            
+            ### 🚀 Highlights & Features
+            - **Modern Hardware Rendering**: Primary hardware acceleration powered by **Vulkan** and **OpenGL 3.3+**, with ultra-compatible **Software** blit and optional Direct3D 11/9.
+            - **Universal Multi-Platform Binaries**: Native builds for Windows 64-bit (`x64`), Windows 32-bit (`x86`), Linux (`x86_64`), and macOS Universal (`arm64` Apple Silicon & `x86_64` Intel).
+            - **Multi-Language Plugin Architecture**: Native support for **JavaScript**, **TypeScript**, **Lua 5.4**, and **C-ABI Native Dynamic Libraries (.dll / .so / .dylib)**.
+            - **Picture-in-Picture Coaster-Cam**: Real-time broadcast telemetry HUD (G-forces, velocity, altitude) with smear-free viewport docking.
+            - **Enhanced Compression**: Zstandard stream optimization eliminating network multiplayer map sync errors.
+            - **Console Cleanliness**: Zero spurious CLI/terminal popups on desktop execution.
+          files: release-assets/*
+          draft: false
+          prerelease: false

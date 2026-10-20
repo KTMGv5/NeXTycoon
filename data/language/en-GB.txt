@@ -3920,3 +3920,4 @@ STR_7147    :Open the plugins directory in File Explorer.
 STR_7148    :Universal Tycoon Modules
 STR_7149    :Installed JavaScript Plugins
 STR_7150    :Active
+STR_7151    :Vulkan (Hardware Accelerated)

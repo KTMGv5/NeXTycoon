@@ -50,6 +50,7 @@
     <ClInclude Include="CursorRepository.h" />
     <ClInclude Include="drawing\BitmapReader.h" />
     <ClInclude Include="drawing\engines\DrawingEngineFactory.hpp" />
+    <ClInclude Include="drawing\engines\VulkanDrawingEngine.h" />
     <ClInclude Include="drawing\engines\opengl\ApplyPaletteShader.h" />
     <ClInclude Include="drawing\engines\opengl\ApplyTransparencyShader.h" />
     <ClInclude Include="drawing\engines\opengl\CopyRectShader.h" />
@@ -121,6 +122,7 @@
     <ClCompile Include="drawing\BitmapReader.cpp" />
     <ClCompile Include="drawing\engines\HardwareDisplayDrawingEngine.cpp" />
     <ClCompile Include="drawing\engines\D3D11DrawingEngine.cpp" />
+    <ClCompile Include="drawing\engines\VulkanDrawingEngine.cpp" />
     <ClCompile Include="drawing\engines\D3D9DrawingEngine.cpp" />
     <ClCompile Include="drawing\engines\opengl\ApplyPaletteShader.cpp" />
     <ClCompile Include="drawing\engines\opengl\ApplyTransparencyShader.cpp" />

@@ -599,15 +599,7 @@ namespace OpenRCT2
 
             auto drawingEngineType = Config::Get().general.drawingEngine;
 
-#if defined(_WIN32)
-            // On Windows, auto-upgrade legacy OpenGL or Software configurations to highest available DirectX (Direct3D 11)
-            if (drawingEngineType == DrawingEngine::openGL || drawingEngineType == DrawingEngine::softwareWithHardwareDisplay)
-            {
-                drawingEngineType = DrawingEngine::direct3D11;
-            }
-#endif
-
-            // Attempt to create drawing engine of the type specified in the config.
+// Attempt to create drawing engine of the type specified in the config.
             {
                 auto drawingEngine = initializeEngine(drawingEngineType);
                 if (drawingEngine != nullptr)
@@ -616,9 +608,19 @@ namespace OpenRCT2
                 }
                 else
                 {
+if (drawingEngineType == DrawingEngine::vulkan)
+                    {
+                        LOG_WARNING("Vulkan failed to initialize; falling back to OpenGL...");
+                        drawingEngineType = DrawingEngine::openGL;
+                        drawingEngine = initializeEngine(drawingEngineType);
+                        if (drawingEngine != nullptr)
+                        {
+                            _drawingEngine = std::move(drawingEngine);
+                        }
+                    }
 #if defined(_WIN32)
                     // If Direct3D 11 failed, attempt Direct3D 9 before falling back to software
-                    if (drawingEngineType == DrawingEngine::direct3D11)
+                    if (_drawingEngine == nullptr && drawingEngineType == DrawingEngine::direct3D11)
                     {
                         LOG_WARNING("Direct3D 11 failed to initialize; falling back to Direct3D 9...");
                         drawingEngineType = DrawingEngine::direct3D9;

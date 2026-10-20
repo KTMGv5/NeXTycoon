@@ -23,6 +23,7 @@ enum class DrawingEngine : int32_t
     openGL,
     direct3D9,
     direct3D11,
+    vulkan,
     count,
 };
 

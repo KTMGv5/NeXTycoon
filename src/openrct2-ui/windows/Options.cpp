@@ -535,18 +535,17 @@ namespace OpenRCT2::Ui::Windows
     static std::vector<DrawingEngineEntry> GetAvailableDrawingEngines()
     {
         std::vector<DrawingEngineEntry> engines;
+        engines.push_back({ DrawingEngine::vulkan, STR_DRAWING_ENGINE_VULKAN });
+#ifndef DISABLE_OPENGL
+        engines.push_back({ DrawingEngine::openGL, STR_DRAWING_ENGINE_OPENGL });
+#endif
+        engines.push_back({ DrawingEngine::softwareWithHardwareDisplay, STR_DRAWING_ENGINE_SOFTWARE });
 #if defined(_WIN32)
         if (IsD3D11Available())
         {
             engines.push_back({ DrawingEngine::direct3D11, STR_DRAWING_ENGINE_DIRECT3D11 });
         }
         engines.push_back({ DrawingEngine::direct3D9, STR_DRAWING_ENGINE_DIRECT3D9 });
-        engines.push_back({ DrawingEngine::softwareWithHardwareDisplay, STR_DRAWING_ENGINE_SOFTWARE });
-#else
-        engines.push_back({ DrawingEngine::softwareWithHardwareDisplay, STR_DRAWING_ENGINE_SOFTWARE });
-#ifndef DISABLE_OPENGL
-        engines.push_back({ DrawingEngine::openGL, STR_DRAWING_ENGINE_OPENGL });
-#endif
 #endif
         return engines;
     }

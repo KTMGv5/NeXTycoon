@@ -19,6 +19,7 @@ namespace OpenRCT2::Ui
     struct IUiContext;
 
     [[nodiscard]] std::unique_ptr<Drawing::IDrawingEngine> CreateHardwareDisplayDrawingEngine(IUiContext& uiContext);
+    [[nodiscard]] std::unique_ptr<Drawing::IDrawingEngine> CreateVulkanDrawingEngine(IUiContext& uiContext);
 #ifndef DISABLE_OPENGL
     [[nodiscard]] std::unique_ptr<Drawing::IDrawingEngine> CreateOpenGLDrawingEngine(IUiContext& uiContext);
 #endif
@@ -36,14 +37,11 @@ namespace OpenRCT2::Ui
             {
                 case DrawingEngine::softwareWithHardwareDisplay:
                     return CreateHardwareDisplayDrawingEngine(uiContext);
+                case DrawingEngine::vulkan:
+                    return CreateVulkanDrawingEngine(uiContext);
 #ifndef DISABLE_OPENGL
                 case DrawingEngine::openGL:
-#if defined(_WIN32)
-                    // OpenGL is eliminated on Windows; route to highest available DirectX (Direct3D 11)
-                    return Create(DrawingEngine::direct3D11, uiContext);
-#else
                     return CreateOpenGLDrawingEngine(uiContext);
-#endif
 #endif
 #if defined(_WIN32)
                 case DrawingEngine::direct3D9:

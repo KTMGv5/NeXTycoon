@@ -112,6 +112,7 @@ namespace OpenRCT2::Config
         ConfigEnumEntry<DrawingEngine>("OPENGL", DrawingEngine::openGL),
         ConfigEnumEntry<DrawingEngine>("DIRECT3D9", DrawingEngine::direct3D9),
         ConfigEnumEntry<DrawingEngine>("DIRECT3D11", DrawingEngine::direct3D11),
+        ConfigEnumEntry<DrawingEngine>("VULKAN", DrawingEngine::vulkan),
     });
 
     static const auto Enum_ScaleQuality = ConfigEnum<ScaleQuality>({

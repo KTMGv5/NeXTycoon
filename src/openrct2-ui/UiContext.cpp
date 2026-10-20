@@ -886,8 +886,17 @@ private:
         {
             flags |= SDL_WINDOW_OPENGL;
         }
+        else if (Config::Get().general.drawingEngine == DrawingEngine::vulkan)
+        {
+            flags |= SDL_WINDOW_VULKAN;
+        }
 
         _window = SDL_CreateWindow(OPENRCT2_NAME, windowPos.x, windowPos.y, width, height, flags);
+        if (_window == nullptr && (flags & SDL_WINDOW_VULKAN))
+        {
+            flags &= ~SDL_WINDOW_VULKAN;
+            _window = SDL_CreateWindow(OPENRCT2_NAME, windowPos.x, windowPos.y, width, height, flags);
+        }
         if (_window == nullptr)
         {
             const char* error = SDL_GetError();

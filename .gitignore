@@ -321,3 +321,7 @@ discord-rpc
 
 # CMake
 cmake-build-*/
+
+# Release packaging
+NeXTycoon-*.zip
+NeXTycoon-*/
