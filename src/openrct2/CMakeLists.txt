@@ -9,6 +9,7 @@ endif ()
 
 if (ENABLE_SCRIPTING)
     include_directories(SYSTEM "${CMAKE_CURRENT_LIST_DIR}/../thirdparty/quickjs-ng")
+    include_directories(SYSTEM "${CMAKE_CURRENT_LIST_DIR}/../thirdparty/lua-5.4.7/src")
 
     # quickjs-ng is third party, ignore all warnings
     set(OPENRCT2_QUICKJS_NG_SOURCES "${CMAKE_CURRENT_LIST_DIR}/../thirdparty/quickjs-ng/quickjs-amalgam.c")
@@ -28,7 +29,14 @@ set(LIBOPENRCT2_LINKAGE)
 if (APPLE)
     set(LIBOPENRCT2_LINKAGE STATIC)
 endif()
-add_library(libopenrct2 ${LIBOPENRCT2_LINKAGE} ${OPENRCT2_QUICKJS_NG_SOURCES} ${OPENRCT2_CORE_SOURCES} ${OPENRCT2_CORE_MM_SOURCES})
+    file(GLOB OPENRCT2_LUA_SOURCES "${CMAKE_CURRENT_LIST_DIR}/../thirdparty/lua-5.4.7/src/*.c")
+    list(FILTER OPENRCT2_LUA_SOURCES EXCLUDE REGEX ".*(lua|luac)\\.c$")
+    if (MSVC)
+        set_source_files_properties(${OPENRCT2_LUA_SOURCES} PROPERTIES COMPILE_FLAGS "/w")
+    else ()
+        set_source_files_properties(${OPENRCT2_LUA_SOURCES} PROPERTIES COMPILE_FLAGS "-w")
+    endif ()
+add_library(libopenrct2 ${LIBOPENRCT2_LINKAGE} ${OPENRCT2_QUICKJS_NG_SOURCES} ${OPENRCT2_LUA_SOURCES} ${OPENRCT2_CORE_SOURCES} ${OPENRCT2_CORE_MM_SOURCES})
 add_library(OpenRCT2::libopenrct2 ALIAS libopenrct2)
 
 if (CMAKE_COMPILER_IS_GNUCXX AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS "13")

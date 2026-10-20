@@ -325,3 +325,5 @@ cmake-build-*/
 # Release packaging
 NeXTycoon-*.zip
 NeXTycoon-*/
+
+*.tar.gz

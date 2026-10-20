@@ -9,10 +9,14 @@
 
 #ifdef ENABLE_SCRIPTING
 
+#if defined(_WIN32)
 #ifndef WIN32_LEAN_AND_MEAN
     #define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
+#else
+#include <dlfcn.h>
+#endif
 
 #include "NativePluginRuntime.h"
 #include "Plugin.h"
@@ -191,6 +195,7 @@ namespace OpenRCT2::Scripting
     bool NativePluginRuntime::Load(std::string_view path, std::string& outError)
     {
         std::string pathStr(path);
+#if defined(_WIN32)
         HMODULE hMod = LoadLibraryA(pathStr.c_str());
         if (hMod == nullptr)
         {
@@ -198,7 +203,6 @@ namespace OpenRCT2::Scripting
             outError = "LoadLibrary failed with error code: " + std::to_string(err);
             return false;
         }
-
         _moduleHandle = static_cast<void*>(hMod);
 
         _initFunc = reinterpret_cast<NxPluginInitFunc>(GetProcAddress(hMod, "nx_plugin_init"));
@@ -206,10 +210,30 @@ namespace OpenRCT2::Scripting
         {
             _initFunc = reinterpret_cast<NxPluginInitFunc>(GetProcAddress(hMod, "nextycoon_plugin_init"));
         }
+#else
+        void* hMod = dlopen(pathStr.c_str(), RTLD_NOW | RTLD_LOCAL);
+        if (hMod == nullptr)
+        {
+            const char* err = dlerror();
+            outError = "dlopen failed: " + std::string(err ? err : "unknown error");
+            return false;
+        }
+        _moduleHandle = hMod;
+
+        _initFunc = reinterpret_cast<NxPluginInitFunc>(dlsym(hMod, "nx_plugin_init"));
+        if (_initFunc == nullptr)
+        {
+            _initFunc = reinterpret_cast<NxPluginInitFunc>(dlsym(hMod, "nextycoon_plugin_init"));
+        }
+#endif
 
         if (_initFunc == nullptr)
         {
-            FreeLibrary(hMod);
+#if defined(_WIN32)
+            FreeLibrary(static_cast<HMODULE>(_moduleHandle));
+#else
+            dlclose(_moduleHandle);
+#endif
             _moduleHandle = nullptr;
             outError = "Entry point nx_plugin_init not found in library";
             return false;
@@ -219,15 +243,25 @@ namespace OpenRCT2::Scripting
         int32_t res = _initFunc(&_api, &_info);
         if (res != 0)
         {
-            FreeLibrary(hMod);
+#if defined(_WIN32)
+            FreeLibrary(static_cast<HMODULE>(_moduleHandle));
+#else
+            dlclose(_moduleHandle);
+#endif
             _moduleHandle = nullptr;
             outError = "nx_plugin_init returned non-zero error: " + std::to_string(res);
             return false;
         }
 
-        _startFunc = reinterpret_cast<NxPluginStartFunc>(GetProcAddress(hMod, "nx_plugin_start"));
-        _updateFunc = reinterpret_cast<NxPluginUpdateFunc>(GetProcAddress(hMod, "nx_plugin_update"));
-        _shutdownFunc = reinterpret_cast<NxPluginShutdownFunc>(GetProcAddress(hMod, "nx_plugin_shutdown"));
+#if defined(_WIN32)
+        _startFunc = reinterpret_cast<NxPluginStartFunc>(GetProcAddress(static_cast<HMODULE>(_moduleHandle), "nx_plugin_start"));
+        _updateFunc = reinterpret_cast<NxPluginUpdateFunc>(GetProcAddress(static_cast<HMODULE>(_moduleHandle), "nx_plugin_update"));
+        _shutdownFunc = reinterpret_cast<NxPluginShutdownFunc>(GetProcAddress(static_cast<HMODULE>(_moduleHandle), "nx_plugin_shutdown"));
+#else
+        _startFunc = reinterpret_cast<NxPluginStartFunc>(dlsym(_moduleHandle, "nx_plugin_start"));
+        _updateFunc = reinterpret_cast<NxPluginUpdateFunc>(dlsym(_moduleHandle, "nx_plugin_update"));
+        _shutdownFunc = reinterpret_cast<NxPluginShutdownFunc>(dlsym(_moduleHandle, "nx_plugin_shutdown"));
+#endif
 
         if (_owner != nullptr)
         {
@@ -271,7 +305,11 @@ namespace OpenRCT2::Scripting
 
         if (_moduleHandle != nullptr)
         {
+#if defined(_WIN32)
             FreeLibrary(static_cast<HMODULE>(_moduleHandle));
+#else
+            dlclose(_moduleHandle);
+#endif
             _moduleHandle = nullptr;
         }
     }
