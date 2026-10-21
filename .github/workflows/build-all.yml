@@ -102,8 +102,7 @@ jobs:
         run: |
           cmake -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
-            -DDISABLE_DISCORD=ON \
-            -DSTATIC=ON
+            -DDISABLE_DISCORD=ON
 
       - name: Build NeXTycoon Linux
         run: |
