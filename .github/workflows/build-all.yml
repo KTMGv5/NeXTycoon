@@ -42,17 +42,27 @@ jobs:
         run: |
           $pkgDir = "NeXTycoon-v1.1.0-${{ matrix.pkg_name }}"
           New-Item -ItemType Directory -Path $pkgDir
-          Copy-Item -Path "bin\openrct2.exe" -Destination $pkgDir\
-          Copy-Item -Path "bin\openrct2-cli.exe" -Destination $pkgDir\
+          Copy-Item -Path "bin\openrct2.exe" -Destination "$pkgDir\openrct2.exe"
+          Copy-Item -Path "bin\openrct2.exe" -Destination "$pkgDir\NeXTycoon.exe"
+          Copy-Item -Path "bin\openrct2-cli.exe" -Destination "$pkgDir\openrct2-cli.exe"
+          Copy-Item -Path "bin\openrct2-cli.exe" -Destination "$pkgDir\NeXTycoon-cli.exe"
           Copy-Item -Path "bin\*.dll" -Destination $pkgDir\ -ErrorAction SilentlyContinue
-          Copy-Item -Path "data" -Destination $pkgDir\ -Recurse
-          if (Test-Path "bin\plugins") {
-              Copy-Item -Path "bin\plugins" -Destination $pkgDir\ -Recurse
+          if (Test-Path "bin\data") {
+              Copy-Item -Path "bin\data" -Destination "$pkgDir\data" -Recurse
+          } else {
+              Copy-Item -Path "data" -Destination "$pkgDir\data" -Recurse
           }
-          Copy-Item -Path "readme.md" -Destination $pkgDir\
-          Copy-Item -Path "contributors.md" -Destination $pkgDir\
-          Copy-Item -Path "licence.txt" -Destination $pkgDir\
-          Compress-Archive -Path $pkgDir -DestinationPath "$pkgDir.zip"
+          if (Test-Path "bin\plugins") {
+              Copy-Item -Path "bin\plugins" -Destination "$pkgDir\plugins" -Recurse
+          }
+          New-Item -ItemType Directory -Path "$pkgDir\include" -Force | Out-Null
+          if (Test-Path "src\openrct2\scripting\nextycoon_api.h") {
+              Copy-Item -Path "src\openrct2\scripting\nextycoon_api.h" -Destination "$pkgDir\include\"
+          }
+          Copy-Item -Path "readme.md" -Destination "$pkgDir\"
+          Copy-Item -Path "contributors.md" -Destination "$pkgDir\"
+          Copy-Item -Path "licence.txt" -Destination "$pkgDir\"
+          Compress-Archive -Path "$pkgDir\*" -DestinationPath "$pkgDir.zip" -Force
 
       - name: Upload Windows Artifact
         uses: actions/upload-artifact@v4
@@ -99,15 +109,27 @@ jobs:
 
       - name: Build NeXTycoon Linux
         run: |
-          ninja -C build
+          ninja -C build g2 openrct2 openrct2-cli
 
       - name: Package Linux Binary Tarball
         run: |
           PKG_NAME="NeXTycoon-v1.1.0-linux-x86_64"
           mkdir -p "$PKG_NAME"
-          cp build/openrct2 "$PKG_NAME/"
-          cp build/openrct2-cli "$PKG_NAME/"
+          cp build/openrct2 "$PKG_NAME/openrct2"
+          cp build/openrct2 "$PKG_NAME/NeXTycoon"
+          cp build/openrct2-cli "$PKG_NAME/openrct2-cli"
+          cp build/openrct2-cli "$PKG_NAME/NeXTycoon-cli"
           cp -r data "$PKG_NAME/"
+          if [ -d "bin/data" ]; then
+            cp -r bin/data/* "$PKG_NAME/data/"
+          fi
+          if [ -f "build/g2.dat" ]; then
+            cp build/g2.dat "$PKG_NAME/data/"
+          fi
+          mkdir -p "$PKG_NAME/include"
+          if [ -f "src/openrct2/scripting/nextycoon_api.h" ]; then
+            cp "src/openrct2/scripting/nextycoon_api.h" "$PKG_NAME/include/"
+          fi
           cp readme.md contributors.md licence.txt "$PKG_NAME/"
           tar -czvf "$PKG_NAME.tar.gz" "$PKG_NAME"
 
@@ -141,7 +163,7 @@ jobs:
 
       - name: Build NeXTycoon macOS
         run: |
-          ninja -C build
+          ninja -C build g2 openrct2 openrct2-cli
 
       - name: Package macOS App Bundle
         run: |
@@ -149,10 +171,25 @@ jobs:
           mkdir -p "$PKG_NAME"
           if [ -d "build/OpenRCT2.app" ]; then
             cp -r "build/OpenRCT2.app" "$PKG_NAME/NeXTycoon.app"
+            if [ -f "build/g2.dat" ]; then
+              cp build/g2.dat "$PKG_NAME/NeXTycoon.app/Contents/Resources/data/" 2>/dev/null || true
+            fi
           else
-            cp build/openrct2 "$PKG_NAME/"
-            cp build/openrct2-cli "$PKG_NAME/"
+            cp build/openrct2 "$PKG_NAME/NeXTycoon"
+            cp build/openrct2 "$PKG_NAME/openrct2"
+            cp build/openrct2-cli "$PKG_NAME/NeXTycoon-cli"
+            cp build/openrct2-cli "$PKG_NAME/openrct2-cli"
             cp -r data "$PKG_NAME/"
+            if [ -d "bin/data" ]; then
+              cp -r bin/data/* "$PKG_NAME/data/"
+            fi
+            if [ -f "build/g2.dat" ]; then
+              cp build/g2.dat "$PKG_NAME/data/"
+            fi
+          fi
+          mkdir -p "$PKG_NAME/include"
+          if [ -f "src/openrct2/scripting/nextycoon_api.h" ]; then
+            cp "src/openrct2/scripting/nextycoon_api.h" "$PKG_NAME/include/"
           fi
           cp readme.md contributors.md licence.txt "$PKG_NAME/"
           zip -r "$PKG_NAME.zip" "$PKG_NAME"
@@ -167,7 +204,7 @@ jobs:
     name: Publish GitHub Release
     needs: [build-windows, build-linux, build-macos]
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main'
+    if: startsWith(github.ref, 'refs/tags/')
     steps:
       - name: Download All Artifacts
         uses: actions/download-artifact@v4
@@ -187,8 +224,9 @@ jobs:
             
             ### 🚀 Highlights & Features
             - **Modern Hardware Rendering**: Primary hardware acceleration powered by **Vulkan** and **OpenGL 3.3+**, with ultra-compatible **Software** blit and optional Direct3D 11/9.
-            - **Universal Multi-Platform Binaries**: Native builds for Windows 64-bit (`x64`), Windows 32-bit (`x86`), Linux (`x86_64`), and macOS Universal (`arm64` Apple Silicon & `x86_64` Intel).
-            - **Multi-Language Plugin Architecture**: Native support for **JavaScript**, **TypeScript**, **Lua 5.4**, and **C-ABI Native Dynamic Libraries (.dll / .so / .dylib)**.
+            - **Universal Multi-Platform Binaries**: Native standalone portable builds for Windows 64-bit (`x64`), Windows 32-bit (`x86`), Linux (`x86_64`), and macOS Universal (`arm64` Apple Silicon & `x86_64` Intel).
+            - **Full Game Data Included**: Complete objects library, asset packs, `g2.dat`, `tracks.dat`, fonts, palettes, scenario patches, sequence, shaders, and language packs.
+            - **Multi-Language Plugin Architecture**: Native support for **JavaScript**, **TypeScript**, **Lua 5.4**, and **C-ABI Native Dynamic Libraries (.dll / .so / .dylib)**. Includes Wall Street Stock Exchange plugin sample (`NeXTycoonWallStreet.dll`).
             - **Picture-in-Picture Coaster-Cam**: Real-time broadcast telemetry HUD (G-forces, velocity, altitude) with smear-free viewport docking.
             - **Enhanced Compression**: Zstandard stream optimization eliminating network multiplayer map sync errors.
             - **Console Cleanliness**: Zero spurious CLI/terminal popups on desktop execution.
