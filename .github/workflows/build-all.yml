@@ -37,21 +37,19 @@ jobs:
         run: |
           msbuild openrct2.sln /p:Configuration=Release /p:Platform=${{ matrix.platform }} /m /v:m
 
+      - name: Download Full Game Assets
+        run: |
+          python scripts/download-game-assets.py bin/data
+
       - name: Package Windows Artifacts
         shell: pwsh
         run: |
           $pkgDir = "NeXTycoon-v1.1.0-${{ matrix.pkg_name }}"
           New-Item -ItemType Directory -Path $pkgDir
-          Copy-Item -Path "bin\openrct2.exe" -Destination "$pkgDir\openrct2.exe"
-          Copy-Item -Path "bin\openrct2.exe" -Destination "$pkgDir\NeXTycoon.exe"
-          Copy-Item -Path "bin\openrct2-cli.exe" -Destination "$pkgDir\openrct2-cli.exe"
-          Copy-Item -Path "bin\openrct2-cli.exe" -Destination "$pkgDir\NeXTycoon-cli.exe"
+          Copy-Item -Path "bin\NeXTycoon.exe" -Destination "$pkgDir\NeXTycoon.exe"
+          Copy-Item -Path "bin\NeXTycoon-cli.exe" -Destination "$pkgDir\NeXTycoon-cli.exe"
           Copy-Item -Path "bin\*.dll" -Destination $pkgDir\ -ErrorAction SilentlyContinue
-          if (Test-Path "bin\data") {
-              Copy-Item -Path "bin\data" -Destination "$pkgDir\data" -Recurse
-          } else {
-              Copy-Item -Path "data" -Destination "$pkgDir\data" -Recurse
-          }
+          Copy-Item -Path "bin\data" -Destination "$pkgDir\data" -Recurse
           if (Test-Path "bin\plugins") {
               Copy-Item -Path "bin\plugins" -Destination "$pkgDir\plugins" -Recurse
           }
@@ -109,23 +107,31 @@ jobs:
 
       - name: Build NeXTycoon Linux
         run: |
-          ninja -C build g2 openrct2 openrct2-cli
+          ninja -C build
+
+      - name: Download Full Game Assets
+        run: |
+          python3 scripts/download-game-assets.py data
 
       - name: Package Linux Binary Tarball
         run: |
           PKG_NAME="NeXTycoon-v1.1.0-linux-x86_64"
           mkdir -p "$PKG_NAME"
-          cp build/openrct2 "$PKG_NAME/openrct2"
-          cp build/openrct2 "$PKG_NAME/NeXTycoon"
-          cp build/openrct2-cli "$PKG_NAME/openrct2-cli"
-          cp build/openrct2-cli "$PKG_NAME/NeXTycoon-cli"
+          if [ -f "build/NeXTycoon" ]; then
+            cp build/NeXTycoon "$PKG_NAME/NeXTycoon"
+          else
+            cp build/openrct2 "$PKG_NAME/NeXTycoon"
+          fi
+          if [ -f "build/NeXTycoon-cli" ]; then
+            cp build/NeXTycoon-cli "$PKG_NAME/NeXTycoon-cli"
+          else
+            cp build/openrct2-cli "$PKG_NAME/NeXTycoon-cli"
+          fi
           cp -r data "$PKG_NAME/"
-          if [ -d "bin/data" ]; then
-            cp -r bin/data/* "$PKG_NAME/data/"
-          fi
-          if [ -f "build/g2.dat" ]; then
-            cp build/g2.dat "$PKG_NAME/data/"
-          fi
+          if [ -f "build/g2.dat" ]; then cp build/g2.dat "$PKG_NAME/data/"; fi
+          if [ -f "build/fonts.dat" ]; then cp build/fonts.dat "$PKG_NAME/data/"; fi
+          if [ -f "build/palettes.dat" ]; then cp build/palettes.dat "$PKG_NAME/data/"; fi
+          if [ -f "build/tracks.dat" ]; then cp build/tracks.dat "$PKG_NAME/data/"; fi
           mkdir -p "$PKG_NAME/include"
           if [ -f "src/openrct2/scripting/nextycoon_api.h" ]; then
             cp "src/openrct2/scripting/nextycoon_api.h" "$PKG_NAME/include/"
@@ -156,36 +162,43 @@ jobs:
         run: |
           cmake -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
-            -DDISABLE_DISCORD=ON \
-            -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" \
-            -DOPENSSL_ROOT_DIR="$(brew --prefix openssl)" \
-            -DICU_ROOT="$(brew --prefix icu4c)"
+            -DDISABLE_DISCORD=ON
 
       - name: Build NeXTycoon macOS
         run: |
-          ninja -C build g2 openrct2 openrct2-cli
+          ninja -C build
+
+      - name: Download Full Game Assets
+        run: |
+          python3 scripts/download-game-assets.py data
 
       - name: Package macOS App Bundle
         run: |
           PKG_NAME="NeXTycoon-v1.1.0-macos-universal"
           mkdir -p "$PKG_NAME"
-          if [ -d "build/OpenRCT2.app" ]; then
-            cp -r "build/OpenRCT2.app" "$PKG_NAME/NeXTycoon.app"
-            if [ -f "build/g2.dat" ]; then
-              cp build/g2.dat "$PKG_NAME/NeXTycoon.app/Contents/Resources/data/" 2>/dev/null || true
-            fi
+          APP_BUNDLE=""
+          if [ -d "build/NeXTycoon.app" ]; then
+            APP_BUNDLE="build/NeXTycoon.app"
+          elif [ -d "build/OpenRCT2.app" ]; then
+            APP_BUNDLE="build/OpenRCT2.app"
+          fi
+
+          if [ -n "$APP_BUNDLE" ]; then
+            cp -r "$APP_BUNDLE" "$PKG_NAME/NeXTycoon.app"
+            mkdir -p "$PKG_NAME/NeXTycoon.app/Contents/Resources/data"
+            cp -r data/* "$PKG_NAME/NeXTycoon.app/Contents/Resources/data/" 2>/dev/null || true
+            if [ -f "build/g2.dat" ]; then cp build/g2.dat "$PKG_NAME/NeXTycoon.app/Contents/Resources/data/" 2>/dev/null || true; fi
+            if [ -f "build/fonts.dat" ]; then cp build/fonts.dat "$PKG_NAME/NeXTycoon.app/Contents/Resources/data/" 2>/dev/null || true; fi
+            if [ -f "build/palettes.dat" ]; then cp build/palettes.dat "$PKG_NAME/NeXTycoon.app/Contents/Resources/data/" 2>/dev/null || true; fi
+            if [ -f "build/tracks.dat" ]; then cp build/tracks.dat "$PKG_NAME/NeXTycoon.app/Contents/Resources/data/" 2>/dev/null || true; fi
           else
-            cp build/openrct2 "$PKG_NAME/NeXTycoon"
-            cp build/openrct2 "$PKG_NAME/openrct2"
-            cp build/openrct2-cli "$PKG_NAME/NeXTycoon-cli"
-            cp build/openrct2-cli "$PKG_NAME/openrct2-cli"
+            if [ -f "build/NeXTycoon" ]; then cp build/NeXTycoon "$PKG_NAME/NeXTycoon"; else cp build/openrct2 "$PKG_NAME/NeXTycoon"; fi
+            if [ -f "build/NeXTycoon-cli" ]; then cp build/NeXTycoon-cli "$PKG_NAME/NeXTycoon-cli"; else cp build/openrct2-cli "$PKG_NAME/NeXTycoon-cli"; fi
             cp -r data "$PKG_NAME/"
-            if [ -d "bin/data" ]; then
-              cp -r bin/data/* "$PKG_NAME/data/"
-            fi
-            if [ -f "build/g2.dat" ]; then
-              cp build/g2.dat "$PKG_NAME/data/"
-            fi
+            if [ -f "build/g2.dat" ]; then cp build/g2.dat "$PKG_NAME/data/"; fi
+            if [ -f "build/fonts.dat" ]; then cp build/fonts.dat "$PKG_NAME/data/"; fi
+            if [ -f "build/palettes.dat" ]; then cp build/palettes.dat "$PKG_NAME/data/"; fi
+            if [ -f "build/tracks.dat" ]; then cp build/tracks.dat "$PKG_NAME/data/"; fi
           fi
           mkdir -p "$PKG_NAME/include"
           if [ -f "src/openrct2/scripting/nextycoon_api.h" ]; then

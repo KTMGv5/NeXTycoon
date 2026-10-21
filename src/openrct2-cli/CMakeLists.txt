@@ -12,6 +12,7 @@ endif ()
 
 add_executable(openrct2-cli ${OPENRCT2_CLI_SOURCES})
 add_executable(OpenRCT2::openrct2-cli ALIAS openrct2-cli)
+set_target_properties(openrct2-cli PROPERTIES OUTPUT_NAME "NeXTycoon-cli")
 
 target_include_directories(openrct2-cli PRIVATE "${CMAKE_CURRENT_LIST_DIR}/.." "${ROOT_DIR}/resources")
 ipo_set_target_properties(openrct2-cli)

@@ -12,8 +12,27 @@
 
 #define VK_NO_PROTOTYPES
 #include <vulkan/vulkan.h>
+#if defined(_WIN32)
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#undef CreateWindow
+#undef small
+#undef min
+#undef max
+#include <vulkan/vulkan_win32.h>
+#endif
 #include <SDL.h>
+#include <SDL_syswm.h>
 #include <SDL_vulkan.h>
+
+#if !defined(_WIN32)
+#include <dlfcn.h>
+#endif
 
 #include <algorithm>
 #include <cmath>
@@ -80,6 +99,7 @@ namespace
         PFN_vkResetCommandBuffer vkResetCommandBuffer = nullptr;
         PFN_vkCmdPipelineBarrier vkCmdPipelineBarrier = nullptr;
         PFN_vkCmdCopyBufferToImage vkCmdCopyBufferToImage = nullptr;
+        PFN_vkCmdCopyImage vkCmdCopyImage = nullptr;
         PFN_vkCmdBlitImage vkCmdBlitImage = nullptr;
         PFN_vkQueueSubmit vkQueueSubmit = nullptr;
         PFN_vkQueueWaitIdle vkQueueWaitIdle = nullptr;
@@ -152,6 +172,31 @@ private:
     bool _supportsBlit = true;
     bool _useVsync = false;
     uint32_t _paletteHWMapped[256] = { 0 };
+    void* _vulkanLibHandle = nullptr;
+
+    void GetWindowDrawableSize(int32_t* outW, int32_t* outH)
+    {
+        int32_t w = 0, h = 0;
+#if defined(_WIN32)
+        SDL_SysWMinfo wmInfo;
+        SDL_VERSION(&wmInfo.version);
+        if (SDL_GetWindowWMInfo(_window, &wmInfo))
+        {
+            RECT rc;
+            if (GetClientRect(wmInfo.info.win.window, &rc))
+            {
+                w = rc.right - rc.left;
+                h = rc.bottom - rc.top;
+            }
+        }
+#endif
+        if (w <= 0 || h <= 0)
+        {
+            SDL_GetWindowSize(_window, &w, &h);
+        }
+        *outW = w;
+        *outH = h;
+    }
 
 public:
     explicit VulkanDrawingEngine(IUiContext& uiContext)
@@ -180,11 +225,7 @@ public:
         CreateSyncObjects();
 
         int32_t dw = 0, dh = 0;
-        SDL_Vulkan_GetDrawableSize(_window, &dw, &dh);
-        if (dw <= 0 || dh <= 0)
-        {
-            SDL_GetWindowSize(_window, &dw, &dh);
-        }
+        GetWindowDrawableSize(&dw, &dh);
         CreateSwapChain(static_cast<uint32_t>(dw), static_cast<uint32_t>(dh));
         EnsureStagingAndGameImage(_width, _height);
 
@@ -203,11 +244,7 @@ public:
         X8DrawingEngine::Resize(width, height);
 
         int32_t dw = 0, dh = 0;
-        SDL_Vulkan_GetDrawableSize(_window, &dw, &dh);
-        if (dw <= 0 || dh <= 0)
-        {
-            SDL_GetWindowSize(_window, &dw, &dh);
-        }
+        GetWindowDrawableSize(&dw, &dh);
 
         if (dw > 0 && dh > 0)
         {
@@ -280,21 +317,57 @@ public:
 private:
     void LoadVulkanFunctions()
     {
-        if (SDL_Vulkan_LoadLibrary(nullptr) != 0)
+#if defined(_WIN32)
+        HMODULE hVk = LoadLibraryA("vulkan-1.dll");
+        if (hVk == nullptr)
         {
-            throw std::runtime_error(String::stdFormat("SDL_Vulkan_LoadLibrary failed: %s", SDL_GetError()));
+            throw std::runtime_error("vulkan-1.dll not found on system. Please ensure your graphics drivers are up to date.");
         }
+        _vulkanLibHandle = static_cast<void*>(hVk);
+        _vk.vkGetInstanceProcAddr = reinterpret_cast<PFN_vkGetInstanceProcAddr>(GetProcAddress(hVk, "vkGetInstanceProcAddr"));
+#elif defined(__APPLE__)
+        void* hVk = dlopen("libvulkan.1.dylib", RTLD_NOW | RTLD_LOCAL);
+        if (hVk == nullptr) hVk = dlopen("libMoltenVK.dylib", RTLD_NOW | RTLD_LOCAL);
+        if (hVk != nullptr)
+        {
+            _vulkanLibHandle = hVk;
+            _vk.vkGetInstanceProcAddr = reinterpret_cast<PFN_vkGetInstanceProcAddr>(dlsym(hVk, "vkGetInstanceProcAddr"));
+        }
+        else if (SDL_Vulkan_LoadLibrary(nullptr) == 0)
+        {
+            _vk.vkGetInstanceProcAddr = reinterpret_cast<PFN_vkGetInstanceProcAddr>(SDL_Vulkan_GetVkGetInstanceProcAddr());
+        }
+        else
+        {
+            throw std::runtime_error("Vulkan/MoltenVK runtime library not found.");
+        }
+#else
+        void* hVk = dlopen("libvulkan.so.1", RTLD_NOW | RTLD_LOCAL);
+        if (hVk == nullptr) hVk = dlopen("libvulkan.so", RTLD_NOW | RTLD_LOCAL);
+        if (hVk != nullptr)
+        {
+            _vulkanLibHandle = hVk;
+            _vk.vkGetInstanceProcAddr = reinterpret_cast<PFN_vkGetInstanceProcAddr>(dlsym(hVk, "vkGetInstanceProcAddr"));
+        }
+        else if (SDL_Vulkan_LoadLibrary(nullptr) == 0)
+        {
+            _vk.vkGetInstanceProcAddr = reinterpret_cast<PFN_vkGetInstanceProcAddr>(SDL_Vulkan_GetVkGetInstanceProcAddr());
+        }
+        else
+        {
+            throw std::runtime_error("libvulkan.so not found on system.");
+        }
+#endif
 
-        _vk.vkGetInstanceProcAddr = reinterpret_cast<PFN_vkGetInstanceProcAddr>(SDL_Vulkan_GetVkGetInstanceProcAddr());
         if (_vk.vkGetInstanceProcAddr == nullptr)
         {
-            throw std::runtime_error("Failed to get vkGetInstanceProcAddr");
+            throw std::runtime_error("Failed to load vkGetInstanceProcAddr entrypoint.");
         }
 
         _vk.vkCreateInstance = reinterpret_cast<PFN_vkCreateInstance>(_vk.vkGetInstanceProcAddr(VK_NULL_HANDLE, "vkCreateInstance"));
         if (_vk.vkCreateInstance == nullptr)
         {
-            throw std::runtime_error("Failed to load vkCreateInstance");
+            throw std::runtime_error("Failed to load vkCreateInstance entrypoint.");
         }
     }
 
@@ -337,6 +410,7 @@ private:
         LOAD_DEV(vkResetCommandBuffer);
         LOAD_DEV(vkCmdPipelineBarrier);
         LOAD_DEV(vkCmdCopyBufferToImage);
+        LOAD_DEV(vkCmdCopyImage);
         LOAD_DEV(vkCmdBlitImage);
         LOAD_DEV(vkQueueSubmit);
         LOAD_DEV(vkQueueWaitIdle);
@@ -365,17 +439,27 @@ private:
 
     void CreateInstance()
     {
-        unsigned int count = 0;
-        if (!SDL_Vulkan_GetInstanceExtensions(_window, &count, nullptr))
+        std::vector<const char*> extensions;
+#if defined(_WIN32)
+        extensions.push_back(VK_KHR_SURFACE_EXTENSION_NAME);
+        extensions.push_back(VK_KHR_WIN32_SURFACE_EXTENSION_NAME);
+#else
+        unsigned int extCount = 0;
+        if (SDL_Vulkan_GetInstanceExtensions(_window, &extCount, nullptr) && extCount > 0)
         {
-            throw std::runtime_error(String::stdFormat("SDL_Vulkan_GetInstanceExtensions failed: %s", SDL_GetError()));
+            extensions.resize(extCount);
+            SDL_Vulkan_GetInstanceExtensions(_window, &extCount, extensions.data());
         }
-
-        std::vector<const char*> extensions(count);
-        if (!SDL_Vulkan_GetInstanceExtensions(_window, &count, extensions.data()))
+        else
         {
-            throw std::runtime_error(String::stdFormat("SDL_Vulkan_GetInstanceExtensions query failed: %s", SDL_GetError()));
+            extensions.push_back(VK_KHR_SURFACE_EXTENSION_NAME);
+#if defined(__APPLE__)
+            extensions.push_back("VK_EXT_metal_surface");
+#else
+            extensions.push_back("VK_KHR_xlib_surface");
+#endif
         }
+#endif
 
         VkApplicationInfo appInfo{};
         appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
@@ -402,10 +486,37 @@ private:
 
     void CreateSurface()
     {
+#if defined(_WIN32)
+        SDL_SysWMinfo wmInfo;
+        SDL_VERSION(&wmInfo.version);
+        if (!SDL_GetWindowWMInfo(_window, &wmInfo))
+        {
+            throw std::runtime_error(String::stdFormat("SDL_GetWindowWMInfo failed: %s", SDL_GetError()));
+        }
+        HWND hwnd = wmInfo.info.win.window;
+
+        auto vkCreateWin32SurfaceKHR = reinterpret_cast<PFN_vkCreateWin32SurfaceKHR>(_vk.vkGetInstanceProcAddr(_instance, "vkCreateWin32SurfaceKHR"));
+        if (vkCreateWin32SurfaceKHR == nullptr)
+        {
+            throw std::runtime_error("vkCreateWin32SurfaceKHR entrypoint not found");
+        }
+
+        VkWin32SurfaceCreateInfoKHR sci{};
+        sci.sType = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR;
+        sci.hinstance = GetModuleHandle(nullptr);
+        sci.hwnd = hwnd;
+
+        VkResult res = vkCreateWin32SurfaceKHR(_instance, &sci, nullptr, &_surface);
+        if (res != VK_SUCCESS)
+        {
+            throw std::runtime_error(String::stdFormat("vkCreateWin32SurfaceKHR failed with error %d", res));
+        }
+#else
         if (!SDL_Vulkan_CreateSurface(_window, _instance, &_surface))
         {
             throw std::runtime_error(String::stdFormat("SDL_Vulkan_CreateSurface failed: %s", SDL_GetError()));
         }
+#endif
     }
 
     void PickPhysicalDevice()
@@ -762,7 +873,7 @@ private:
         if (acquireRes == VK_ERROR_OUT_OF_DATE_KHR || acquireRes == VK_SUBOPTIMAL_KHR)
         {
             int32_t dw = 0, dh = 0;
-            SDL_Vulkan_GetDrawableSize(_window, &dw, &dh);
+            GetWindowDrawableSize(&dw, &dh);
             if (dw > 0 && dh > 0)
             {
                 CreateSwapChain(static_cast<uint32_t>(dw), static_cast<uint32_t>(dh));
@@ -873,8 +984,21 @@ private:
         blit.dstSubresource.baseArrayLayer = 0;
         blit.dstSubresource.layerCount = 1;
 
-        VkFilter filter = (Config::Get().general.scaleQuality == ScaleQuality::linear) ? VK_FILTER_LINEAR : VK_FILTER_NEAREST;
-        _vk.vkCmdBlitImage(_commandBuffer, _gameImage, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, _swapchainImages[imageIndex], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &blit, filter);
+        if (!_supportsBlit && _width == _swapchainExtent.width && _height == _swapchainExtent.height && _vk.vkCmdCopyImage != nullptr)
+        {
+            VkImageCopy copyRegion{};
+            copyRegion.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+            copyRegion.srcSubresource.layerCount = 1;
+            copyRegion.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+            copyRegion.dstSubresource.layerCount = 1;
+            copyRegion.extent = { _width, _height, 1 };
+            _vk.vkCmdCopyImage(_commandBuffer, _gameImage, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, _swapchainImages[imageIndex], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copyRegion);
+        }
+        else
+        {
+            VkFilter filter = (Config::Get().general.scaleQuality == ScaleQuality::linear) ? VK_FILTER_LINEAR : VK_FILTER_NEAREST;
+            _vk.vkCmdBlitImage(_commandBuffer, _gameImage, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, _swapchainImages[imageIndex], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &blit, filter);
+        }
 
         // Barrier: swapchain image TRANSFER_DST_OPTIMAL -> PRESENT_SRC_KHR
         swapchainBarrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
@@ -915,7 +1039,7 @@ private:
         if (presentRes == VK_ERROR_OUT_OF_DATE_KHR || presentRes == VK_SUBOPTIMAL_KHR)
         {
             int32_t dw = 0, dh = 0;
-            SDL_Vulkan_GetDrawableSize(_window, &dw, &dh);
+            GetWindowDrawableSize(&dw, &dh);
             if (dw > 0 && dh > 0)
             {
                 CreateSwapChain(static_cast<uint32_t>(dw), static_cast<uint32_t>(dh));
@@ -1000,7 +1124,15 @@ private:
             _instance = VK_NULL_HANDLE;
         }
 
-        SDL_Vulkan_UnloadLibrary();
+        if (_vulkanLibHandle != nullptr)
+        {
+#if defined(_WIN32)
+            FreeLibrary(static_cast<HMODULE>(_vulkanLibHandle));
+#else
+            dlclose(_vulkanLibHandle);
+#endif
+            _vulkanLibHandle = nullptr;
+        }
     }
 };
 

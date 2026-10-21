@@ -8,7 +8,7 @@
     <!-- CLI Configuration -->
     <CLIProjectName Condition="'$(CLIProjectName)' == ''">openrct2-cli</CLIProjectName>
     <CLIProjectPath Condition="'$(CLIProjectPath)' == ''">$(SolutionDir)src\$(CLIProjectName)\$(CLIProjectName).vcxproj</CLIProjectPath>
-    <GraphicsCLIPath Condition="'$(GraphicsCLIPath)' == ''">$(OutDir)$(CLIProjectName).exe</GraphicsCLIPath>
+    <GraphicsCLIPath Condition="'$(GraphicsCLIPath)' == ''">$(OutDir)NeXTycoon-cli.exe</GraphicsCLIPath>
 
     <!-- Data Configuration -->
     <DataOutputPath Condition="'$(DataOutputPath)' == ''">$(OutDir)data\</DataOutputPath>

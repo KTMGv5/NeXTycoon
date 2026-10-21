@@ -51,7 +51,7 @@
   </PropertyGroup>
   <Import Project="..\..\openrct2.common.props" />
   <PropertyGroup>
-    <TargetName>openrct2-cli</TargetName>
+    <TargetName>NeXTycoon-cli</TargetName>
     <LibraryPath>$(SolutionDir)bin;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <ItemDefinitionGroup>
@@ -60,7 +60,7 @@
     </ClCompile>
     <Link>
       <AdditionalDependencies>libopenrct2.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <ProgramDatabaseFile>$(OutDir)openrct2-cli.pdb</ProgramDatabaseFile>
+      <ProgramDatabaseFile>$(OutDir)NeXTycoon-cli.pdb</ProgramDatabaseFile>
       <SubSystem>Console</SubSystem>
       <StackReserveSize>8388608</StackReserveSize>
     </Link>
@@ -69,9 +69,6 @@
       <TargetMachine Condition="'$(Platform)'=='x64'">MachineX64</TargetMachine>
       <TargetMachine Condition="'$(Platform)'=='arm64'">MachineARM64</TargetMachine>
     </Lib>
-    <PostBuildEvent>
-      <Command>copy /Y "$(OutDir)$(TargetName).exe" "$(OutDir)NeXTycoon-cli.exe"</Command>
-    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ResourceCompile Include="..\..\resources\OpenRCT2.rc" />
