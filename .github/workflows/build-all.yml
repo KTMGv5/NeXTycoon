@@ -225,23 +225,23 @@ jobs:
           merge-multiple: true
 
       - name: Create or Update GitHub Release
-        uses: softprops/action-gh-release@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: ${{ github.ref_name }}
-          name: NeXTycoon ${{ github.ref_name }} - Multi-Platform Cross-Engine Release
-          body: |
-            ## NeXTycoon Multi-Platform Release (${{ github.ref_name }})
-            
-            ### 🚀 Highlights & Features
-            - **Modern Hardware Rendering**: Primary hardware acceleration powered by **Vulkan** and **OpenGL 3.3+**, with ultra-compatible **Software** blit and optional Direct3D 11/9.
-            - **Universal Multi-Platform Binaries**: Native standalone portable builds for Windows 64-bit (`x64`), Windows 32-bit (`x86`), Linux (`x86_64`), and macOS Universal (`arm64` Apple Silicon & `x86_64` Intel).
-            - **Full Game Data Included**: Complete objects library, asset packs, `g2.dat`, `tracks.dat`, fonts, palettes, scenario patches, sequence, shaders, and language packs.
-            - **Multi-Language Plugin Architecture**: Native support for **JavaScript**, **TypeScript**, **Lua 5.4**, and **C-ABI Native Dynamic Libraries (.dll / .so / .dylib)**. Includes Wall Street Stock Exchange plugin sample (`NeXTycoonWallStreet.dll`).
-            - **Picture-in-Picture Coaster-Cam**: Real-time broadcast telemetry HUD (G-forces, velocity, altitude) with smear-free viewport docking.
-            - **Enhanced Compression**: Zstandard stream optimization eliminating network multiplayer map sync errors.
-            - **Console Cleanliness**: Zero spurious CLI/terminal popups on desktop execution.
-          files: release-assets/*
-          draft: false
-          prerelease: false
+        run: |
+          cat << 'EOF' > release_notes.md
+          ## NeXTycoon Multi-Platform Release (${{ github.ref_name }})
+          
+          ### 🚀 Highlights & Features
+          - **Modern Hardware Rendering**: Primary hardware acceleration powered by **Vulkan** and **OpenGL 3.3+**, with ultra-compatible **Software** blit and optional Direct3D 11/9.
+          - **Universal Multi-Platform Binaries**: Standalone portable builds for Windows 64-bit (`x64`), Windows 32-bit (`x86`), Linux (`x86_64`), and macOS Universal (`arm64` Apple Silicon & `x86_64` Intel).
+          - **Full Game Data Included**: Complete objects library, asset packs, `g2.dat`, `tracks.dat`, fonts, palettes, scenario patches, sequence, shaders, and language packs (80MB+ full packages).
+          - **Multi-Language Plugin Architecture**: Native support for **JavaScript**, **TypeScript**, **Lua 5.4**, and **C-ABI Native Dynamic Libraries (.dll / .so / .dylib)**. Includes Wall Street Stock Exchange plugin sample (`NeXTycoonWallStreet.dll`).
+          - **Picture-in-Picture Coaster-Cam**: Real-time broadcast telemetry HUD (G-forces, velocity, altitude) with smear-free viewport docking.
+          - **Enhanced Compression**: Zstandard stream optimization eliminating network multiplayer map sync errors.
+          - **Console Cleanliness**: Zero spurious CLI/terminal popups on desktop execution.
+          EOF
+          gh release edit ${{ github.ref_name }} --notes-file release_notes.md || true
+          gh release upload ${{ github.ref_name }} release-assets/* --clobber || \
+          gh release create ${{ github.ref_name }} release-assets/* \
+            --title "NeXTycoon ${{ github.ref_name }} - Multi-Platform Cross-Engine Release" \
+            --notes-file release_notes.md
