@@ -20,9 +20,9 @@ jobs:
         platform: [x64, Win32]
         include:
           - platform: x64
-            pkg_name: windows-x64
+            pkg_name: Windows-x64
           - platform: Win32
-            pkg_name: windows-x86
+            pkg_name: Windows-x86
 
     steps:
       - name: Checkout Repository
@@ -220,6 +220,9 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
       - name: Download All Artifacts
         uses: actions/download-artifact@v4
         with:
@@ -229,8 +232,6 @@ jobs:
       - name: Create or Update GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GH_REPO: ${{ github.repository }}
         run: |
           cat << 'EOF' > release_notes.md
           ## NeXTycoon Multi-Platform Release (${{ github.ref_name }})
@@ -244,8 +245,10 @@ jobs:
           - **Enhanced Compression**: Zstandard stream optimization eliminating network multiplayer map sync errors.
           - **Console Cleanliness**: Zero spurious CLI/terminal popups on desktop execution.
           EOF
-          gh release edit ${{ github.ref_name }} --notes-file release_notes.md || true
-          gh release upload ${{ github.ref_name }} release-assets/* --clobber || \
-          gh release create ${{ github.ref_name }} release-assets/* \
+          gh release edit ${{ github.ref_name }} --repo ${{ github.repository }} --notes-file release_notes.md || true
+          ASSETS=$(find release-assets -type f \( -name "*.zip" -o -name "*.tar.gz" \))
+          echo "Found release assets: $ASSETS"
+          gh release upload ${{ github.ref_name }} $ASSETS --repo ${{ github.repository }} --clobber || \
+          gh release create ${{ github.ref_name }} $ASSETS --repo ${{ github.repository }} \
             --title "NeXTycoon ${{ github.ref_name }} - Multi-Platform Cross-Engine Release" \
             --notes-file release_notes.md
